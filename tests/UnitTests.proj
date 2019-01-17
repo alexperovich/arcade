@@ -6,7 +6,7 @@
     <HelixSource>pr/dotnet/arcade/$(BUILD_SOURCEBRANCH)/</HelixSource>
     <HelixType>test/product/</HelixType>
     <HelixBuild>$(BUILD_BUILDNUMBER)</HelixBuild>
-    <HelixBuild Condition="'$(HelixBuild)' == ''">12345.01</HelixBuild>
+    <HelixBuild Condition="'$(HelixBuild)' == ''">20190111.1301</HelixBuild>
 
     <IncludeDotNetCli>true</IncludeDotNetCli>
     <DotNetCliPackageType>sdk</DotNetCliPackageType>
@@ -15,8 +15,6 @@
     <TestRunNamePrefix>$(AGENT_JOBNAME)</TestRunNamePrefix>
     
     <EnableXUnitReporter>true</EnableXUnitReporter>
-
-    <XUnitProjects>true</XUnitProjects>
   </PropertyGroup>
 
   <ItemGroup>

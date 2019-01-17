@@ -1,0 +1,54 @@
+<Project>
+  <PropertyGroup>
+    <!-- Read XUnitPublishTargetFramework if it is set for back compat -->
+    <TestTargetFramework Condition="'$(XUnitPublishTargetFramework)' != ''">$(XUnitPublishTargetFramework</TestTargetFramework>
+    <TestTargetFramework Condition="'$(TestTargetFramework)' == ''">netcoreapp2.1</TestTargetFramework>
+
+    <_VSTestPublishTargetsPath>$(MSBuildThisFileDirectory)VSTestPublish.targets</_VSTestPublishTargetsPath>
+
+    <VSTestArguments Condition="'$(VSTestArguments)' == ''"></VSTestArguments>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <TestProject Include="@(XUnitProject)"/> <!-- Include XUnitProject items for back compat -->
+  </ItemGroup>
+
+  <Target Name="EvaluateTestWorkItems" Condition="'@(TestProject)' != ''" BeforeTargets="CreateTestWorkItems"
+          Outputs="%(TestProject.Identity)">
+    <PropertyGroup>
+      <_CurrentTestProject>%(TestProject.Identity)</_CurrentTestProject>
+      <_CurrentTestTargetFramework>%(TestProject.TargetFramework)</_CurrentTestTargetFramework>
+      <_CurrentTestTargetFramework Condition="'$(_CurrentPublishTargetFramework)' == ''">$(TestTargetFramework)</_CurrentTestTargetFramework>
+      <_CurrentAdditionalProperties>%(TestProject.AdditionalProperties)</_CurrentAdditionalProperties>
+    </PropertyGroup>
+    <MSBuild Projects="$(_CurrentTestProject)"
+             Targets="Restore"
+             Properties="CustomAfterMicrosoftCommonTargets=$(_VSTestPublishTargetsPath);$(_CurrentAdditionalProperties)">
+    </MSBuild>
+    <MSBuild Projects="$(_CurrentTestProject)"
+             Targets="PublishWithOutput"
+             Properties="CustomAfterMicrosoftCommonTargets=$(_VSTestPublishTargetsPath);TargetFramework=$(_CurrentTestTargetFramework);$(_CurrentAdditionalProperties)">
+      <Output TaskParameter="TargetOutputs" PropertyName="_PublishOutputDir" />
+    </MSBuild>
+    <MSBuild Projects="$(_CurrentTestProject)"
+             Targets="GetTargetPath"
+             Properties="CustomAfterMicrosoftCommonTargets=$(_VSTestPublishTargetsPath);TargetFramework=$(_CurrentTestTargetFramework);$(_CurrentAdditionalProperties)">
+      <Output TaskParameter="TargetOutputs" PropertyName="_TargetPath" />
+    </MSBuild>
+
+    <ItemGroup>
+      <TestProject Condition="'%(Identity)' == '$(_CurrentTestProject)'">
+        <PublishDirectory>$(_PublishOutputDir)</PublishDirectory>
+        <TargetPath>$(_TargetPath)</TargetPath>
+        <TestTargetFramework>$(_CurrentTestTargetFramework)</TestTargetFramework>
+      </TestProject>
+    </ItemGroup>
+  </Target>
+  
+  <Target Name="CreateTestWorkItems" Condition="'@(TestProject)' != ''" BeforeTargets="Test">    
+    <CreateTestWorkItems TestProjects="@(TestProject)" IsPosixShell="$(IsPosixShell)" VSTestArguments="$(VSTestArguments)">
+      <Output TaskParameter="TestWorkItems" ItemName="HelixWorkItem"/>
+    </CreateTestWorkItems>
+  </Target>
+
+</Project>
