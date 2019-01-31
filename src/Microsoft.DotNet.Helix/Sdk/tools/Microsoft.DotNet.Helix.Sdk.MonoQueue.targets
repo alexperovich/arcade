@@ -61,7 +61,8 @@
                   PostCommands="$(HelixPostCommands)"
                   CorrelationPayloads="@(HelixCorrelationPayload)"
                   WorkItems="@(HelixWorkItem)"
-                  HelixProperties="@(HelixProperties)">
+                  HelixProperties="@(HelixProperties)"
+                  SecondaryQueues="@(HelixSecondaryQueue)">
       <Output TaskParameter="JobCorrelationId" PropertyName="HelixJobId"/>
     </SendHelixJob>
     <ItemGroup>

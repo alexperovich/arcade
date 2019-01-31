@@ -1,9 +1,10 @@
 from typing import List
+from enum import Enum
 
 
 class TestResult:
-    def __init__(self, name, kind, type_name, method, duration, result, exception_type, failure_message, stack_trace,
-                 skip_reason, attachments):
+    def __init__(self, name, kind, type_name, method, duration, status, exception_type, failure_message, stack_trace,
+                 skip_reason, attachments, attempts=None):
         """
 
         :type name: unicode
@@ -11,24 +12,26 @@ class TestResult:
         :type type_name: unicode
         :type method: unicode
         :type duration: float
-        :type result: unicode
+        :type status: TestStatus
         :type exception_type: unicode
         :type failure_message: unicode
         :type stack_trace: unicode
         :type skip_reason: unicode
         :type attachments: List[TestResultAttachment]
+        :type attempts: List[TestResult]
         """
         self._name = name
         self._kind = kind
         self._type = type_name
         self._method = method
         self._duration_seconds = duration
-        self._result = result
+        self._status = status
         self._exception_type = exception_type
         self._failure_message = failure_message
         self._stack_trace = stack_trace
         self._skip_reason = skip_reason
         self._attachments = attachments
+        self._attempts = attempts
 
     @property
     def name(self):
@@ -51,8 +54,8 @@ class TestResult:
         return self._duration_seconds
 
     @property
-    def result(self):
-        return self._result
+    def status(self):
+        return self._status
 
     @property
     def exception_type(self):
@@ -71,12 +74,19 @@ class TestResult:
         return self._skip_reason
 
     @property
-    def output(self):
-        return self._output
-
-    @property
     def attachments(self):
         return self._attachments
+
+    @property
+    def attempts(self):
+        return self._attempts
+
+
+class TestStatus(Enum):
+    none = 1
+    passed = 2
+    failed = 3
+    skipped = 4
 
 
 class TestResultAttachment:

@@ -1,6 +1,6 @@
 import xml.etree.ElementTree
 from result_format import ResultFormat
-from defs import TestResult, TestResultAttachment
+from defs import TestResult, TestResultAttachment, TestStatus
 
 
 class XUnitFormat(ResultFormat):
@@ -27,6 +27,14 @@ class XUnitFormat(ResultFormat):
                 method = element.get("method")
                 duration = float(element.get("time"))
                 result = element.get("result")
+                status = TestStatus.none
+                if result == u"Pass":
+                    status = TestStatus.passed
+                if result == u"Skip":
+                    status = TestStatus.skipped
+                if result == u"Fail":
+                    status = TestStatus.failed
+
                 exception_type = None
                 failure_message = None
                 stack_trace = None
@@ -54,7 +62,7 @@ class XUnitFormat(ResultFormat):
                 if reason_element is not None:
                     skip_reason = reason_element.text
 
-                res = TestResult(name, u'xunit', type_name, method, duration, result, exception_type, failure_message, stack_trace,
+                res = TestResult(name, u'xunit', type_name, method, duration, status, exception_type, failure_message, stack_trace,
                                  skip_reason, attachments)
                 yield res
                 # remove the element's content so we don't keep it around too long.

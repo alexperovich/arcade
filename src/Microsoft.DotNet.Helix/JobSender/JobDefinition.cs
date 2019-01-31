@@ -19,6 +19,8 @@ namespace Microsoft.DotNet.Helix.Client
         IJobDefinitionWithTargetQueue,
         IJobDefinition
     {
+        public static readonly double SecondaryQueueSasValidHours = 24;
+
         private readonly Dictionary<string, string> _properties;
         private readonly List<WorkItemDefinition> _workItems;
 
@@ -43,6 +45,7 @@ namespace Microsoft.DotNet.Helix.Client
         public string TargetQueueId { get; private set; }
         public string Creator { get; private set; }
         public IList<IPayload> CorrelationPayloads { get; } = new List<IPayload>();
+        public IList<string> SecondaryQueues { get; } = new List<string>();
         public int? MaxRetryCount { get; private set; }
         public string StorageAccountConnectionString { get; private set; }
         public string TargetContainerName { get; set; } = DefaultContainerName;
@@ -95,6 +98,12 @@ namespace Microsoft.DotNet.Helix.Client
             return this;
         }
 
+        public IJobDefinition WithSecondaryQueue(string queueId)
+        {
+            SecondaryQueues.Add(queueId);
+            return this;
+        }
+
         public IJobDefinition WithProperty(string key, string value)
         {
             _properties[key] = value;
@@ -137,10 +146,17 @@ namespace Microsoft.DotNet.Helix.Client
             List<string> correlationPayloadUris =
                 (await Task.WhenAll(CorrelationPayloads.Select(p => p.UploadAsync(storageContainer, log)))).ToList();
 
+            List<SecondaryQueueInfo> secondaryQueueInfos = SecondaryQueues.Select(q => new SecondaryQueueInfo
+            {
+                QueueId = q,
+                SasValidHours = SecondaryQueueSasValidHours,
+            }).ToList();
+
             foreach (WorkItemDefinition workItem in _workItems)
             {
                 JobListEntry entry = await workItem.SendAsync(storageContainer, TargetContainerName, log);
                 entry.CorrelationPayloadUris = correlationPayloadUris;
+                entry.SecondaryQueues = secondaryQueueInfos;
                 jobList.Add(entry);
             }
 

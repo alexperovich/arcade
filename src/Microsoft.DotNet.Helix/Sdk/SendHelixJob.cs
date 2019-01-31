@@ -123,6 +123,11 @@ namespace Microsoft.DotNet.Helix.Sdk
         public ITaskItem[] HelixProperties { get; set; }
 
         /// <summary>
+        ///   A set of secondary queues to enable for each work item. Each entry must be a valid helix queue.
+        /// </summary>
+        public string[] SecondaryQueues { get; set; }
+
+        /// <summary>
         /// Max automatic retry of workitems which do not return 0
         /// </summary>
         public int MaxRetryCount { get; set; }
@@ -179,6 +184,14 @@ namespace Microsoft.DotNet.Helix.Sdk
                 else
                 {
                     Log.LogError("SendHelixJob given no WorkItems to send.");
+                }
+
+                if (SecondaryQueues != null)
+                {
+                    foreach (string queueId in SecondaryQueues)
+                    {
+                        def = def.WithSecondaryQueue(queueId);
+                    }
                 }
 
                 if (_commandPayload.TryGetPayloadDirectory(out string directory))

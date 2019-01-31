@@ -14,6 +14,7 @@ namespace Microsoft.DotNet.Helix.Client
         IJobDefinition WithCorrelationPayloadArchive(string archive);
         IJobDefinition WithCorrelationPayloadFiles(params string[] files);
         IJobDefinition WithProperty(string key, string value);
+        IJobDefinition WithSecondaryQueue(string queueId);
         IJobDefinition WithCreator(string creator);
         IJobDefinition WithContainerName(string targetContainerName);
         IJobDefinition WithStorageAccountConnectionString(string accountConnectionString);

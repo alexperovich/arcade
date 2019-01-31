@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 namespace Microsoft.DotNet.Helix.Client
 {
@@ -9,5 +9,12 @@ namespace Microsoft.DotNet.Helix.Client
         public string PayloadUri { get; set; }
         public string WorkItemId { get; set; }
         public int TimeoutInSeconds { get; set; }
+        public List<SecondaryQueueInfo> SecondaryQueues { get; set; }
+    }
+
+    internal class SecondaryQueueInfo
+    {
+        public string QueueId { get; set; }
+        public double SasValidHours { get; set; }
     }
 }

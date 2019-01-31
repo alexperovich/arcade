@@ -1,6 +1,6 @@
 import os
-from defs import TestResult, TestResultAttachment
-from typing import Iterable
+from defs import TestResult, TestResultAttachment, TestStatus
+from typing import List
 from formats import all_formats
 from helpers import get_env
 
@@ -13,7 +13,7 @@ def __no_results_result():
         type_name=u'{}'.format(work_item_name),
         method=u'WorkItemExecution',
         duration=1,
-        result=u'Fail',
+        status=TestStatus.failed,
         exception_type=None,
         failure_message=u'The work item failed to produce any test results.',
         stack_trace=None,
@@ -64,7 +64,7 @@ def add_logs(tr, log_list):
     return tr
 
 def read_results(dir):
-    # type: (str) -> Iterable[TestResult]
+    # type: (str) -> str, List[TestResult]
 
     print "Searching '{}' for test results files".format(dir)
 
@@ -78,7 +78,7 @@ def read_results(dir):
                 if file_name in f.acceptable_file_names:
                     file_path = os.path.join(root, file_name)
                     print 'Found results file {} with format {}'.format(file_path, f.name)
-                    return (add_logs(tr, log_list) for tr in f.read_results(file_path))
+                    return file_path, [add_logs(tr, log_list) for tr in f.read_results(file_path)]
 
     print 'No results file found in any of the following formats: {}'.format(', '.join((f.name for f in all_formats)))
-    return __no_results_result()
+    return None, list(__no_results_result())

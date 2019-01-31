@@ -6,12 +6,12 @@
     <HelixSource>pr/dotnet/arcade/$(BUILD_SOURCEBRANCH)/</HelixSource>
     <HelixType>test/product/</HelixType>
     <HelixBuild>$(BUILD_BUILDNUMBER)</HelixBuild>
-    <HelixBuild Condition="'$(HelixBuild)' == ''">123460.01</HelixBuild>
+    <HelixBuild Condition="'$(HelixBuild)' == ''">123464.01</HelixBuild>
 
     <IncludeDotNetCli>true</IncludeDotNetCli>
     <DotNetCliPackageType>sdk</DotNetCliPackageType>
 
-    <EnableAzurePipelinesReporter>true</EnableAzurePipelinesReporter>
+    <EnableAzurePipelinesReporter>false</EnableAzurePipelinesReporter>
     <TestRunNamePrefix>$(AGENT_JOBNAME)</TestRunNamePrefix>
     
     <EnableXUnitReporter>true</EnableXUnitReporter>
@@ -19,10 +19,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <XUnitProject Include="..\src\**\*.Tests.csproj"/>
+    <!-- <XUnitProject Include="..\src\**\*.Tests.csproj"/> -->
 
     <!-- Remove the arcade sdk tests project because it depends heavily on machine/repo state and doesn't work properly in helix yet -->
-    <XUnitProject Remove="..\src\Microsoft.DotNet.Arcade.Sdk.Tests\Microsoft.DotNet.Arcade.Sdk.Tests.csproj"/>
+    <!-- <XUnitProject Remove="..\src\Microsoft.DotNet.Arcade.Sdk.Tests\Microsoft.DotNet.Arcade.Sdk.Tests.csproj"/> -->
   </ItemGroup>
 
   <!-- Use the locally built version of Helix Tasks temporaraily -->
@@ -32,9 +32,9 @@
   </PropertyGroup>
 
   <ItemGroup Condition=" '$(HelixAccessToken)' != '' ">
-    <HelixTargetQueue Include="Ubuntu.1604.Amd64"/>
-    <HelixTargetQueue Include="RedHat.7.Amd64"/>
-    <HelixTargetQueue Include="Windows.10.Amd64"/>
+    <!-- <HelixTargetQueue Include="Ubuntu.1604.Amd64"/> -->
+    <!-- <HelixTargetQueue Include="RedHat.7.Amd64"/> -->
+    <!-- <HelixTargetQueue Include="Windows.10.Amd64"/> -->
   </ItemGroup>
 
   <PropertyGroup Condition=" '$(HelixAccessToken)' == '' ">
@@ -44,9 +44,10 @@
   </PropertyGroup>
 
   <ItemGroup Condition=" '$(HelixAccessToken)' == '' ">
-    <HelixTargetQueue Include="Ubuntu.1604.Amd64.Open"/>
-    <HelixTargetQueue Include="RedHat.7.Amd64.Open"/>
-    <HelixTargetQueue Include="Windows.10.Amd64.ServerRS4.Open"/>
+    <!-- <HelixTargetQueue Include="Ubuntu.1604.Amd64.Open"/> -->
+    <!-- <HelixTargetQueue Include="RedHat.7.Amd64.Open"/> -->
+    <!-- <HelixTargetQueue Include="Windows.10.Amd64.ServerRS4.Open"/> -->
+    <HelixTargetQueue Include="Windows.10.Amd64.Open"/>
   </ItemGroup>
 
   <PropertyGroup Condition="!$(HelixTargetQueue.StartsWith('Windows'))">
@@ -58,6 +59,23 @@
     <HelixPreCommands>$(HelixPreCommands);dir /s %HELIX_CORRELATION_PAYLOAD%</HelixPreCommands>
     <HelixPreCommands>$(HelixPreCommands);dir /s</HelixPreCommands>
   </PropertyGroup>
+
+
+  <PropertyGroup>
+    <HelixBaseUri>https://helix.int-dot.net/</HelixBaseUri>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <HelixSecondaryQueue Include="Windows.10.Amd64.Open"/>
+
+    <HelixWorkItem Include="Tests"
+                   Command="set"
+                   />
+
+    <!-- <HelixWorkItem Include="Tests"
+                   Command='/bin/bash -c &apos;echo -e "import os\nfor k,v in os.environ.items(): print(\"{}={}\".format(k,v))" | python&apos;'
+                   /> -->
+  </ItemGroup>
 
   <!-- Useless stuff to make Arcade SDK happy -->
   <PropertyGroup>
