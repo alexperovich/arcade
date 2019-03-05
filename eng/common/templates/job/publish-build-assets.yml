@@ -53,6 +53,7 @@ jobs:
           /p:BuildAssetRegistryToken=$(MaestroAccessToken)
           /p:MaestroApiEndpoint=https://maestro-prod.westus2.cloudapp.azure.com
           /p:Configuration=$(_BuildConfig)
+          /p:MicrosoftDotNetMaestroTasksVersion=1.1.0-beta.19154.7
       condition: ${{ parameters.condition }}
       continueOnError: ${{ parameters.continueOnError }}
     - ${{ if eq(parameters.enablePublishBuildArtifacts, 'true') }}:
