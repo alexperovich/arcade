@@ -23,9 +23,15 @@ namespace Microsoft.DotNet.Helix.Client.Models
         {
             get
             {
-                return
-                    !(Key == default) &&
-                    !(Data == default);
+                if (Key == default(IImmutableDictionary<string, string>))
+                {
+                    return false;
+                }
+                if (Data == default(WorkItemStatusCounts))
+                {
+                    return false;
+                }
+                return true;
             }
         }
     }

@@ -13,7 +13,7 @@ using System.Runtime.Versioning;
 
 namespace Microsoft.DotNet.SignTool
 {
-#if NET461
+#if NET472
     [LoadInSeparateAppDomain]
     public class SignToolTask : AppDomainIsolatedTask
     {
@@ -83,7 +83,7 @@ namespace Microsoft.DotNet.SignTool
 
         /// <summary>
         /// List of file names that should be ignored when checking
-        /// for correcteness of strong name signature.
+        /// for correctness of strong name signature.
         /// </summary>
         public string[] ItemsToSkipStrongNameCheck { get; set; }
 
@@ -134,7 +134,7 @@ namespace Microsoft.DotNet.SignTool
 
         public override bool Execute()
         {
-#if NET461
+#if NET472
             AssemblyResolution.Log = Log;
 #endif
             try
@@ -144,7 +144,7 @@ namespace Microsoft.DotNet.SignTool
             }
             finally
             {
-#if NET461
+#if NET472
                 AssemblyResolution.Log = null;
 #endif
                 Log.LogMessage(MessageImportance.High, "SignToolTask execution finished.");
@@ -460,7 +460,7 @@ namespace Microsoft.DotNet.SignTool
 
             if (pkt.Length != 16) return false;
 
-            return pkt.ToLower().All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z')); ;
+            return pkt.ToLower().All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z'));
         }
     }
 }

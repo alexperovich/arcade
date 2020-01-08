@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Cci.Extensions.CSharp;
 
 namespace Microsoft.Cci.Writers.CSharp
@@ -52,6 +53,12 @@ namespace Microsoft.Cci.Writers.CSharp
 
             WriteAttributes(property.Attributes);
 
+            // We need to preserve nullable custom attributes which are preserved by the compiler as param on the value parameter and return attributes.
+            if (getter != null)
+                WriteAttributes(getter.ReturnValueAttributes);
+            if (setter != null)
+                WriteAttributes(setter.Parameters.Last().Attributes);
+
             if (!isInterfaceProp)
             {
                 if (!accessor.IsExplicitInterfaceMethod())
@@ -62,6 +69,22 @@ namespace Microsoft.Cci.Writers.CSharp
             }
             if (property.GetHiddenBaseProperty(_filter) != Dummy.Property)
                 WriteKeyword("new");
+
+            bool getterHasIsReadOnlyAttribute = (getter?.Attributes.HasIsReadOnlyAttribute()).GetValueOrDefault();
+            bool setterHasIsReadOnlyAttribute = (setter?.Attributes.HasIsReadOnlyAttribute()).GetValueOrDefault();
+
+            // The readonly modifier is applied on the property itself if:
+            //  * It has both a getter and a setter and both have IsReadOnlyAttribute
+            //  * It only has a getter or a setter and it has IsReadOnlyAttribute
+            // Otherwise, the attribute is applied directly on the getter/setter it exists for
+            bool allAccessorsHaveIsReadOnlyAttribute = (getterHasIsReadOnlyAttribute && setterHasIsReadOnlyAttribute) ||
+                                                       (getterHasIsReadOnlyAttribute && (setter is null)) ||
+                                                       (setterHasIsReadOnlyAttribute && (getter is null));
+
+            if (allAccessorsHaveIsReadOnlyAttribute && (LangVersion >= LangVersion8_0))
+            {
+                WriteKeyword("readonly");
+            }
 
             if (property.ReturnValueIsByRef)
             {
@@ -76,6 +99,51 @@ namespace Microsoft.Cci.Writers.CSharp
             if (property.IsExplicitInterfaceProperty() && _forCompilationIncludeGlobalprefix)
                 Write("global::");
 
+            WritePropertyName(property, accessor, accessor == setter, isIndexer);
+            WriteSpace();
+            WriteSymbol("{");
+
+            //get
+            if (getter != null)
+            {
+                bool isReadOnly = getterHasIsReadOnlyAttribute && !allAccessorsHaveIsReadOnlyAttribute;
+                WriteAccessorDefinition(property, getter, "get", isReadOnly);
+            }
+            //set
+            if (setter != null)
+            {
+                bool isReadOnly = setterHasIsReadOnlyAttribute && !allAccessorsHaveIsReadOnlyAttribute;
+                WriteAccessorDefinition(property, setter, "set", isReadOnly);
+            }
+            WriteSpace();
+            WriteSymbol("}");
+        }
+
+        private void WritePropertyName(IPropertyDefinition property, IMethodDefinition accessor, bool isSetterAccessor, bool isIndexer)
+        {
+            if (property.IsExplicitInterfaceProperty())
+            {
+                IMethodImplementation methodImplementation = accessor.GetMethodImplementation();
+                object nullableAttributeArgument = methodImplementation.GetExplicitInterfaceMethodNullableAttributeArgument(_metadataReaderCache);
+                if (nullableAttributeArgument != null)
+                {
+                    WriteTypeName(methodImplementation.ImplementedMethod.ContainingType, noSpace: true, nullableAttributeArgument: nullableAttributeArgument);
+                    WriteSymbol(".");
+                    if (isIndexer)
+                    {
+                        WriteIdentifier("this", false);
+                        WriteIndexerParameters(accessor, isSetterAccessor);
+                    }
+                    else
+                    {
+                        string name = methodImplementation.ImplementedMethod.Name.Value;
+                        WriteIdentifier(name.Substring(name.IndexOf("_") + 1));
+                    }
+
+                    return;
+                }
+            }
+
             if (isIndexer)
             {
                 int index = property.Name.Value.LastIndexOf(".");
@@ -84,33 +152,25 @@ namespace Microsoft.Cci.Writers.CSharp
                 else
                     WriteIdentifier("this", false);
 
-                var parameters = new List<IParameterDefinition>(accessor.Parameters);
-                if (accessor == setter) // If setter remove value parameter.
-                    parameters.RemoveAt(parameters.Count - 1);
-                WriteParameters(parameters, property.ContainingType, true);
+                WriteIndexerParameters(accessor, isSetterAccessor);
             }
             else
             {
                 WriteIdentifier(property.Name);
             }
-            WriteSpace();
-            WriteSymbol("{");
-
-            //get
-            if (getter != null)
-            {
-                WriteAccessorDefinition(property, getter, "get");
-            }
-            //set
-            if (setter != null)
-            {
-                WriteAccessorDefinition(property, setter, "set");
-            }
-            WriteSpace();
-            WriteSymbol("}");
         }
 
-        private void WriteAccessorDefinition(IPropertyDefinition property, IMethodDefinition accessor, string accessorType)
+        private void WriteIndexerParameters(IMethodDefinition accessor, bool isSetterAccessor)
+        {
+            var parameters = new List<IParameterDefinition>(accessor.Parameters);
+            if (isSetterAccessor) // If setter remove value parameter.
+                parameters.RemoveAt(parameters.Count - 1);
+
+            byte? nullableContextValue = accessor.Attributes.GetCustomAttributeArgumentValue<byte?>(CSharpCciExtensions.NullableContextAttributeFullName);
+            WriteParameters(parameters, accessor.ContainingType, nullableContextValue, property: true);
+        }
+
+        private void WriteAccessorDefinition(IPropertyDefinition property, IMethodDefinition accessor, string accessorType, bool isReadOnly)
         {
             WriteSpace();
             WriteAttributes(accessor.Attributes, writeInline: true);
@@ -121,6 +181,10 @@ namespace Microsoft.Cci.Writers.CSharp
 
             if (accessor.Visibility != property.Visibility)
                 WriteVisibility(accessor.Visibility);
+            if (isReadOnly && (LangVersion >= LangVersion8_0))
+            {
+                WriteKeyword("readonly");
+            }
             WriteKeyword(accessorType, noSpace: true);
             WriteMethodBody(accessor);
         }

@@ -17,10 +17,11 @@ The primary driving business requirement is the ability to build .NET Core 3.
 | dotnet/cli                  | master        |  @livarcocc     |
 | dotnet/clicommandlineparser | master        |  @livarcocc     |
 | dotnet/cli-migrate          | master        |  @livarcocc     |
-| dotnet/coreclr              | master        |  @russkeldorph  |
+| dotnet/coreclr              | master        |  @jeffschwMSFT  |
 | dotnet/corefx               | master        |  @danmosemsft   |
 | dotnet/core-sdk             | master        |  @livarcocc     |
 | dotnet/core-setup           | master        |  TBD            |
+| dotnet/fsharp               | master        |  @brettfo       |
 | dotnet/roslyn               | master        |  @jaredpar      |
 | dotnet/templating           | master        |  @mlorbetske    |
 | dotnet/toolset              | master        |  @livarcocc     |
@@ -28,7 +29,7 @@ The primary driving business requirement is the ability to build .NET Core 3.
 | dotnet/standard             | master        |  @danmosemsft   |
 | dotnet/symreader            | master        |  @tmat          |
 | dotnet/symreader-portable   | master        |  @tmat          |
-| Microsoft/msbuild           | master        |  @andygerlicher |
+| Microsoft/msbuild           | master        |  @livarcocc     |
 | Microsoft/visualfsharp      | master        |  @brettfo       |
 | winforms                    | master        |  @AdamYoblick   |
 | wpf                         | master        |                 |

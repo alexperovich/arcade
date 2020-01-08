@@ -4,6 +4,7 @@
 
 using Microsoft.Build.Framework;
 using Microsoft.DotNet.Maestro.Client;
+using Microsoft.DotNet.Maestro.Client.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -31,32 +32,6 @@ namespace Microsoft.DotNet.Build.Tasks.Feed
         /// </summary>
         [Required]
         public string AccountKey { get; set; }
-
-        /// <summary>
-        /// When set to true packages with the same name will be overriden on 
-        /// the target feed.
-        /// </summary>
-        public bool Overwrite { get; set; }
-
-        /// <summary>
-        /// Enables idempotency when Overwrite is false.
-        /// 
-        /// false: (default) Attempting to upload an item that already exists fails.
-        /// 
-        /// true: When an item already exists, download the existing blob to check if it's
-        /// byte-for-byte identical to the one being uploaded. If so, pass. If not, fail.
-        /// </summary>
-        public bool PassIfExistingItemIdentical { get; set; }
-
-        /// <summary>
-        /// Maximum number of concurrent pushes of assets to the flat container.
-        /// </summary>
-        public int MaxClients { get; set; } = 8;
-
-        /// <summary>
-        /// Maximum allowed timeout per upload request to the flat container.
-        /// </summary>
-        public int UploadTimeoutInMinutes { get; set; } = 5;
 
         /// <summary>
         /// Full path to the assets to publish manifest.
@@ -94,6 +69,32 @@ namespace Microsoft.DotNet.Build.Tasks.Feed
         /// </summary>
         [Required]
         public string BuildAssetRegistryToken { get; set; }
+
+        /// <summary>
+        /// When set to true packages with the same name will be overriden on 
+        /// the target feed.
+        /// </summary>
+        public bool Overwrite { get; set; }
+
+        /// <summary>
+        /// Enables idempotency when Overwrite is false.
+        /// 
+        /// false: (default) Attempting to upload an item that already exists fails.
+        /// 
+        /// true: When an item already exists, download the existing blob to check if it's
+        /// byte-for-byte identical to the one being uploaded. If so, pass. If not, fail.
+        /// </summary>
+        public bool PassIfExistingItemIdentical { get; set; }
+
+        /// <summary>
+        /// Maximum number of concurrent pushes of assets to the flat container.
+        /// </summary>
+        public int MaxClients { get; set; } = 8;
+
+        /// <summary>
+        /// Maximum allowed timeout per upload request to the flat container.
+        /// </summary>
+        public int UploadTimeoutInMinutes { get; set; } = 5;
 
         public override bool Execute()
         {
@@ -162,7 +163,7 @@ namespace Microsoft.DotNet.Build.Tasks.Feed
                     {
                         var assetRecord = buildInformation.Assets
                             .Where(a => a.Name.Equals(package.Id) && a.Version.Equals(package.Version))
-                            .Single();
+                            .FirstOrDefault();
 
                         if (assetRecord == null)
                         {
@@ -170,7 +171,15 @@ namespace Microsoft.DotNet.Build.Tasks.Feed
                             continue;
                         }
 
-                        await client.Assets.AddAssetLocationToAssetAsync(assetRecord.Id.Value, ExpectedFeedUrl, "NugetFeed");
+                        var assetWithLocations = await client.Assets.GetAssetAsync(assetRecord.Id);
+
+                        if (assetWithLocations?.Locations.Any(al => al.Location.Equals(ExpectedFeedUrl, StringComparison.OrdinalIgnoreCase)) ?? false)
+                        {
+                            Log.LogMessage($"Asset with Id {package.Id}, Version {package.Version} already has location {ExpectedFeedUrl}");
+                            continue;
+                        }
+
+                        await client.Assets.AddAssetLocationToAssetAsync(assetRecord.Id, AddAssetLocationToAssetAssetLocationType.NugetFeed, ExpectedFeedUrl);
                     }
                 }
 
@@ -191,12 +200,12 @@ namespace Microsoft.DotNet.Build.Tasks.Feed
                             var fileName = Path.GetFileName(blob.Id);
                             return new MSBuild.TaskItem($"{BlobAssetsBasePath}{fileName}", new Dictionary<string, string>
                             {
-                                {"RelativeBlobPath", $"{BuildManifestUtil.AssetsVirtualDir}{blob.Id}"}
+                                {"RelativeBlobPath", blob.Id}
                             });
                         })
                         .ToArray();
 
-                    await blobFeedAction.PublishToFlatContainerAsync(blobs, MaxClients, UploadTimeoutInMinutes, pushOptions);
+                    await blobFeedAction.PublishToFlatContainerAsync(blobs, MaxClients, pushOptions);
 
                     foreach (var package in buildModel.Artifacts.Blobs)
                     {
@@ -210,7 +219,15 @@ namespace Microsoft.DotNet.Build.Tasks.Feed
                             continue;
                         }
 
-                        await client.Assets.AddAssetLocationToAssetAsync(assetRecord.Id.Value, ExpectedFeedUrl, "NugetFeed");
+                        var assetWithLocations = await client.Assets.GetAssetAsync(assetRecord.Id);
+
+                        if (assetWithLocations?.Locations.Any(al => al.Location.Equals(ExpectedFeedUrl, StringComparison.OrdinalIgnoreCase)) ?? false)
+                        {
+                            Log.LogMessage($"Asset with Id {package.Id} already has location {ExpectedFeedUrl}");
+                            continue;
+                        }
+
+                        await client.Assets.AddAssetLocationToAssetAsync(assetRecord.Id, AddAssetLocationToAssetAssetLocationType.Container, ExpectedFeedUrl);
                     }
                 }
             }

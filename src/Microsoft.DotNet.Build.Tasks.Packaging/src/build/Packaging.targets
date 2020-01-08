@@ -48,9 +48,7 @@
     <Authors>Microsoft</Authors>
     <Owners>microsoft,dotnetframework</Owners>
     <Description>TODO</Description>
-    <LicenseUrl Condition="'$(LicenseUrl)' == ''">http://go.microsoft.com/fwlink/?LinkId=329770</LicenseUrl>
     <IconUrl>http://go.microsoft.com/fwlink/?LinkID=288859</IconUrl>
-    <Copyright Condition="'$(Copyright)' == ''">.NET Foundation and Contributors</Copyright>
     <Tags></Tags>
     <RequireLicenseAcceptance Condition="'$(RequireLicenseAcceptance)' == ''">false</RequireLicenseAcceptance>
     <Serviceable Condition="'$(Serviceable)' == ''">true</Serviceable>
@@ -62,15 +60,16 @@
 
   <!-- Shared properties -->
   <PropertyGroup>
-    <SymbolPackageOutputPath Condition="'$(SymbolPackageOutputPath)' == ''">$(PackageOutputPath)symbols/</SymbolPackageOutputPath>
+    <SymbolPackageOutputPath Condition="'$(SymbolPackageOutputPath)' == ''">$([MSBuild]::NormalizeDirectory('$(PackageOutputPath)', 'symbols'))</SymbolPackageOutputPath>
     <OutputPath>$(PackageOutputPath)</OutputPath>
-    <NuSpecOutputPath Condition="'$(NuSpecOutputPath)' == ''">$(PackageOutputPath)specs/</NuSpecOutputPath>
+    <NuSpecOutputPath Condition="'$(NuSpecOutputPath)' == ''">$([MSBuild]::NormalizeDirectory('$(ArtifactsPackagesDir)', 'specs'))</NuSpecOutputPath>
     <NuSpecPath>$(NuSpecOutputPath)$(Id)$(NuspecSuffix).nuspec</NuSpecPath>
     <PackageReportPath>$(PackageReportDir)$(Id)$(NuspecSuffix).json</PackageReportPath>
     <TargetPath>$(NuSpecPath)</TargetPath>
     <RuntimeFilePath Condition="'$(RuntimeFilePath)' == ''">$(NuSpecOutputPath)$(Id)$(NuspecSuffix)/runtime.json</RuntimeFilePath>
     <PackedPackageRuntimeFilePath Condition="'$(PackedPackageRuntimeFilePath)' == ''">$(NuSpecOutputPath)$(Id)$(NuspecSuffix)/$(PackedPackageNamePrefix).runtime.json</PackedPackageRuntimeFilePath>
     <PlaceholderFile>$(MSBuildThisFileDirectory)content/_._</PlaceholderFile>
+    <PackageIconFile Condition="'$(PackageIconFile)' == ''">$(MSBuildThisFileDirectory)Icon.png</PackageIconFile>
     <PackageDescriptionFile Condition="'$(PackageDescriptionFile)' == ''">path to descriptions.json must be specified</PackageDescriptionFile>
     <ValidationSuppressionFile Condition="'$(ValidationSuppressionFile)' == ''">ValidationSuppression.txt</ValidationSuppressionFile>
     <SyncInfoFile Condition="'$(SyncInfoFile)' == ''">unspecified</SyncInfoFile>
@@ -136,7 +135,7 @@
 
   <!-- BEGIN project refs-->
   <!-- Don't actually walk the closure all the time, conditioned on GetClosure metadata on ProjectReference.
-       Walking the closure is very expensive for many of our packages and is unecessary since we are very
+       Walking the closure is very expensive for many of our packages and is unnecessary since we are very
        strict about assets that are included in the package.  -->
   <Target Name="_GetProjectClosure"
           Returns="@(_ProjectReferenceClosure)">
@@ -268,7 +267,7 @@
   <!-- BEGIN files-->
   <!-- If the "PreventImplementationReference" property is true, then don't permit references to the
     package implementation from lib.  This is used in the platform specific packages which should
-    not be directly referenced by projects for implemtation dependencies. -->
+    not be directly referenced by projects for implementation dependencies. -->
   <Target Name="PreventImplementationReference">
     <ItemGroup Condition="'$(PreventImplementationReference)' == 'true'">
       <File Include="$(PlaceholderFile)">
@@ -382,11 +381,16 @@
       <_latestRuntimePackages Include="@(PkgProjDependency)" Condition="'%(PkgProjDependency.TargetRuntime)' != ''" KeepDuplicates="false" />
     </ItemGroup>
 
+    <PropertyGroup>
+      <DoNotAllowVersionsFromSameRelease Condition="'$(DoNotAllowVersionsFromSameRelease)' == ''">true</DoNotAllowVersionsFromSameRelease>
+    </PropertyGroup>
+
     <!-- Calculate the package version to harvest -->
     <GetLastStablePackage Condition="'$(HarvestVersion)' == ''"
                           LatestPackages="@(_latestPackage)"
                           StablePackages="@(StablePackage)"
-                          PackageIndexes="@(PackageIndex)">
+                          PackageIndexes="@(PackageIndex)"
+                          DoNotAllowVersionsFromSameRelease="$(DoNotAllowVersionsFromSameRelease)">
       <Output  TaskParameter="LastStablePackages" ItemName="_lastStablePackage"/>
     </GetLastStablePackage>
 
@@ -398,14 +402,16 @@
     <GetLastStablePackage Condition="'@(HarvestRuntimePackages)' == ''"
                           LatestPackages="@(_latestRuntimePackages)"
                           StablePackages="@(StablePackage)"
-                          PackageIndexes="@(PackageIndex)">
+                          PackageIndexes="@(PackageIndex)"
+                          DoNotAllowVersionsFromSameRelease="$(DoNotAllowVersionsFromSameRelease)">
       <Output  TaskParameter="LastStablePackages" ItemName="HarvestRuntimePackages"/>
     </GetLastStablePackage>
 
     <GetLastStablePackage Condition="'@(HarvestAdditionalPackageIds)' != ''"
                           LatestPackages="@(HarvestAdditionalPackageIds)"
                           StablePackages="@(StablePackage)"
-                          PackageIndexes="@(PackageIndex)">
+                          PackageIndexes="@(PackageIndex)"
+                          DoNotAllowVersionsFromSameRelease="$(DoNotAllowVersionsFromSameRelease)">
       <Output  TaskParameter="LastStablePackages" ItemName="HarvestAdditionalPackages"/>
     </GetLastStablePackage>
 
@@ -443,7 +449,7 @@
     <!-- Harvest files from HarvestAdditionalPackages, but don't calculate support-->
     <HarvestPackage PackageId="%(HarvestAdditionalPackages.Identity)"
                     PackageVersion="%(HarvestAdditionalPackages.Version)"
-                    PackagesFolder="$(PackagesDir)"
+                    PackagesFolder="$(NuGetPackageRoot)"
                     Files="@(File)"
                     RuntimeFile="$(RuntimeIdGraphDefinitionFile)"
                     HarvestAssets="$(HarvestFiles)"
@@ -479,7 +485,7 @@
       </PackageFile>
 
       <!-- NuGet will treat TargetPath as a directory if the extensions dont match,
-           however we need to package files without an extension (Unix exectuables).
+           however we need to package files without an extension (Unix executables).
            As such NuGet will always consider TargetPath to be a file path for these
            files.  Ensure that the TargetPath is the file path for these files. -->
       <PackageFile Condition="'%(Extension)' == ''">
@@ -489,7 +495,7 @@
   </Target>
 
   <!--Target that will add the specified source files into the package.
-      In order for this target to run, define SourcePackageFiles item by includding
+      In order for this target to run, define SourcePackageFiles item by including
       all source files that need to be packaged into it. Each source file must have the 
       PackagePath metadata defined, which is the location of where the source file will
       end up in the package-->
@@ -550,7 +556,7 @@
       <RuntimeDependency>
         <TargetPackage Condition="'%(RuntimeDependency.TargetPackage)' == ''">$(Id)</TargetPackage>
       </RuntimeDependency>
-      <!-- don't include runtime depdendencies in the dependency list, they'll be written to the runtime.json -->
+      <!-- don't include runtime dependencies in the dependency list, they'll be written to the runtime.json -->
       <Dependency Remove="@(RuntimeDependency)"/>
     </ItemGroup>
 
@@ -592,13 +598,6 @@
       <_harvestFile Include="@(File)" Condition="'%(File.HarvestDependencies)' == 'true' and '%(File.Extension)' == '.dll'" />
       <_missingHarvestFile Include="@(_harvestFile)" Condition="!Exists('%(FullPath)')" />
       <_harvestFile Remove="@(_missingHarvestFile)" Condition="'$(AllowPartialPackages)' == 'true'" />
-
-      <!-- add a fake dependency to represent the dependencies of any missing file
-           this will prevent the package from installing on that platform. -->
-      <FilePackageDependency Include="Unavailable" Condition="'$(AllowPartialPackages)' == 'true' AND '@(_missingHarvestFile)' != '' AND '$(_TargetFramework)' != ''">
-        <TargetFramework>$(_TargetFramework)</TargetFramework>
-        <Version>0.0.0</Version>
-      </FilePackageDependency>
     </ItemGroup>
 
     <!-- Generate package references based on assembly dependencies -->
@@ -736,7 +735,7 @@
     </ApplyBaseLine>
 
     <Error Text="No VersionSuffix was set. Ensure it is set before targets in packaging are ran."
-           Condition="'$(VersionSuffix)' == ''" />
+           Condition="'$(VersionSuffix)' == '' AND '@(_BaseLinedDependencies)' != ''" />
     <Error Condition="'@(_BaseLinedDependencies)' != '' AND '@(PackageIndex)' == '' AND '@(StablePackage)' == ''"
            Text="Neither PackageIndex nor StablePackage items are defined: ensure you have imported Microsoft.Private.PackageBaseLine.props from the Microsoft.Private.PackageBaseLine package" />
     <ApplyPreReleaseSuffix Condition="'@(_BaseLinedDependencies)' != ''"
@@ -828,7 +827,7 @@
         DependsOnTargets="GetAssemblyVersionFromProjects">
 
     <Error Text="No VersionSuffix was set. Ensure it is set before targets in packaging are ran."
-           Condition="'$(VersionSuffix)' == ''" />
+           Condition="'$(VersionSuffix)' == '' AND '$(StableVersion)' == ''" />
 
     <Error Text="No version could be detected.  Either specify the Version property or provide at least one managed assembly."
            Condition="'$(PackageVersion)' == '' AND '$(_AssemblyVersion)' == ''" />
@@ -957,6 +956,10 @@
     <DefaultValidateFramework Include="netcoreapp3.0">
       <RuntimeIDs>@(NETCoreApp30RIDs)</RuntimeIDs>
     </DefaultValidateFramework>
+    <NETCoreApp50RIDs Condition="'@(NETCoreApp50RIDs)' == ''" Include="@(NETCoreApp30RIDs)" />
+    <DefaultValidateFramework Include="netcoreapp5.0">
+      <RuntimeIDs>@(NETCoreApp50RIDs)</RuntimeIDs>
+    </DefaultValidateFramework>
 
     <NETCore50RIDs Condition="'@(NETCore50RIDs)' == ''" Include="win10-x86;win10-x86-aot;win10-x64;win10-x64-aot;win10-arm;win10-arm-aot" />
     <DefaultValidateFramework Include="netcore50">
@@ -1021,10 +1024,6 @@
     <UAP10016299RIDs Condition="'@(UAP10016299RIDs)' == ''" Include="@(UAP10RIDs)" />
     <DefaultValidateFramework Include="uap10.0.16299">
       <RuntimeIDs>@(UAP10016299RIDs)</RuntimeIDs>
-    </DefaultValidateFramework>
-    <UAPvNextRIDs Condition="'@(UAPvNextRIDs)' == ''" Include="@(UAP10016299RIDs)" />
-    <DefaultValidateFramework Include="$(UAPvNextTFM)">
-      <RuntimeIDs>@(UAPvNextRIDs)</RuntimeIDs>
     </DefaultValidateFramework>
   </ItemGroup>
 
@@ -1225,7 +1224,9 @@
                     Language="$(Language)"
                     ProjectUrl="$(ProjectUrl)"
                     IconUrl="$(IconUrl)"
+                    Icon="$(PackageIconFile)"
                     LicenseUrl="$(LicenseUrl)"
+                    PackageLicenseExpression="$(PackageLicenseExpression)"
                     Copyright="$(Copyright)"
                     RequireLicenseAcceptance="$(RequireLicenseAcceptance)"
                     Tags="$(Tags)"
@@ -1235,7 +1236,11 @@
                     FrameworkReferences="@(FrameworkReference)"
                     Files="@(_packageFile)"
                     Serviceable="$(Serviceable)"
-                    PackageTypes="$(PackageType)"/>
+                    PackageTypes="$(PackageType)"
+                    RepositoryUrl="$(RepositoryUrl)"
+                    RepositoryType="$(RepositoryType)"
+                    RepositoryBranch="$(RepositoryBranch)"
+                    RepositoryCommit="$(RepositoryCommit)"/>
   </Target>
 
   <Target Name="CreatePackage"
@@ -1279,8 +1284,13 @@
     <Error Condition="'$(PackageIndexFile)' == ''"
            Text="The PackageIndexFile property is not set.  Please set this property to point to the path of the packageIndex.json file for your repo." />
 
+    <PropertyGroup>
+      <UpdateStablePackageInfo Condition="'$(UpdateStablePackageInfo)' == ''">true</UpdateStablePackageInfo>
+    </PropertyGroup>
+
     <UpdatePackageIndex PackageIndexFile="$(PackageIndexFile)"
-                        Packages="$(PackageOutputPath)$(Id).$(PackageVersion).nupkg" />
+                        Packages="$(PackageOutputPath)$(Id).$(PackageVersion).nupkg"
+                        UpdateStablePackageInfo="$(UpdateStablePackageInfo)" />
   </Target>
 
   <!-- Updates the packageIndex with information from the multiple sources for the entire repo -->
@@ -1296,7 +1306,12 @@
     <!-- Set ModuleToPackage to module name identity with 'Package' metadata to define mappings from native modules to package IDs which contain those -->
     <!-- Set FrameworkListsFolder to the path to a set of directories containing framework lists, where the subdirectory name is the TFM.  These lists will determine what is inbox on that framework. -->
     <!-- Set FrameowrkLayout to folder identity with 'TargetFramework' metadata to consider files within that folder inbox on that framework.-->
-
+    <!-- Set UpdateStablePackageInfo to true in order to go through all the package index and update the stable version information for all the packages in the index.-->
+    
+    <ItemGroup>
+      <PackageFolders Include="$(PackageFolders)" />
+    </ItemGroup>
+      
     <UpdatePackageIndex PackageIndexFile="$(PackageIndexFile)"
                         PackageIds="@(PackageIds)"
                         PackageFolders="@(PackageFolders)"
@@ -1304,6 +1319,7 @@
                         StablePackages="@(StablePackage)"
                         ModuleToPackages="@(ModuleToPackage)"
                         InboxFrameworkListFolder="$(FrameworkListsFolder)"
-                        InboxFrameworkLayoutFolders="@(FrameworkLayout)" />
+                        InboxFrameworkLayoutFolders="@(FrameworkLayout)"
+                        UpdateStablePackageInfo="$(UpdateStablePackageInfo)" />
   </Target>
 </Project>

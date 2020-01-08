@@ -9,6 +9,8 @@ using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.IO;
 using System.Linq;
+using System.Net.Http.Headers;
+using System.Reflection.PortableExecutable;
 using Microsoft.Cci;
 
 namespace Microsoft.Cci.Extensions
@@ -224,15 +226,48 @@ namespace Microsoft.Cci.Extensions
             if (_coreAssemblyIdentity != null)
                 return _coreAssemblyIdentity;
 
-            // Try to find the assembly which believes itself is the core assembly
-            foreach (var assembly in this.LoadedUnits.OfType<IAssembly>())
+            IAssembly[] loadedAssemblies = this.LoadedUnits.OfType<IAssembly>().ToArray();
+
+            foreach (var assembly in loadedAssemblies)
             {
-                if (assembly.AssemblyIdentity.Equals(assembly.CoreAssemblySymbolicIdentity))
-                    return assembly.AssemblyIdentity;
+                AssemblyIdentity coreIdentity = ResolveCoreAssemblyIdentity(assembly);
+
+                if (coreIdentity != null)
+                {
+                    return coreIdentity;
+                }
             }
 
             // Otherwise fallback to CCI's default core assembly loading logic.
             return base.GetCoreAssemblySymbolicIdentity();
+        }
+
+        private AssemblyIdentity ResolveCoreAssemblyIdentity(IAssembly assembly)
+        {
+            AssemblyIdentity coreIdentity = assembly.CoreAssemblySymbolicIdentity;
+
+            // Try to find the assembly which believes itself is the core assembly
+            while (!assembly.AssemblyIdentity.Equals(coreIdentity))
+            {
+                if (coreIdentity == null || coreIdentity == Dummy.AssemblyIdentity)
+                {
+                    return null;
+                }
+
+                coreIdentity = ProbeLibPaths(coreIdentity);
+
+                // push down until we can find an assembly that is the core assembly
+                assembly = LoadAssembly(coreIdentity);
+
+                if (assembly == null || assembly == Dummy.Assembly)
+                {
+                    return null;
+                }
+
+                coreIdentity = assembly.CoreAssemblySymbolicIdentity;
+            }
+
+            return coreIdentity;
         }
 
         public void SetCoreAssembly(AssemblyIdentity coreAssembly)
@@ -326,7 +361,7 @@ namespace Microsoft.Cci.Extensions
 
         /// <summary>
         ///  Override ProbeAssemblyReference to ensure we only look in the LibPaths for resolving assemblies and 
-        ///  we don't accidently find some in the GAC or in the framework directory. 
+        ///  we don't accidentally find some in the GAC or in the framework directory. 
         /// </summary>
         public override AssemblyIdentity ProbeAssemblyReference(IUnit referringUnit, AssemblyIdentity referencedAssembly)
         {
@@ -386,8 +421,8 @@ namespace Microsoft.Cci.Extensions
 
         // Overriding this method allows us to read the binaries without blocking the files. The default
         // implementation will use a memory mapped file (MMF) which causes the files to be locked. That
-        // means you can delete them, but you can't overwrite them in-palce, which is especially painful
-        // when reading binaries directly from a build ouput folder.
+        // means you can delete them, but you can't overwrite them in-place, which is especially painful
+        // when reading binaries directly from a build output folder.
         //
         // Measuring indicated that performance implications are negligible. That's why we decided to
         // make this the default and not exposing any (more) options to our ctor.
@@ -451,7 +486,7 @@ namespace Microsoft.Cci.Extensions
 
             if (!string.IsNullOrEmpty(coreAssemblySimpleName))
             {
-                // Otherwise, rearange the list such that the specified coreAssembly is the first one in the list.
+                // Otherwise, rearrange the list such that the specified coreAssembly is the first one in the list.
                 coreAssemblyFile = GetCoreAssemblyFile(coreAssemblySimpleName, contractSet);
 
                 contractSet.Remove(coreAssemblyFile);
@@ -473,7 +508,7 @@ namespace Microsoft.Cci.Extensions
             set;
         }
 
-        // False by deafult for backwards compatibility with tools that wire in their own custom handlers.
+        // False by default for backwards compatibility with tools that wire in their own custom handlers.
         private bool _traceResolutionErrorsAsLoadErrors;
         public bool TraceResolutionErrorsAsLoadErrors
         {

@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Encodings.Web;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Build.Framework;
 using Microsoft.DotNet.Helix.Client;
@@ -19,15 +20,6 @@ namespace Microsoft.DotNet.Helix.Sdk
     public class SendHelixJob : HelixTask
     {
         /// <summary>
-        ///   The 'source' value reported to Helix
-        /// </summary>
-        /// <remarks>
-        ///   This value is used to filter and sort jobs on Mission Control
-        /// </remarks>
-        [Required]
-        public string Source { get; set; }
-
-        /// <summary>
         ///   The 'type' value reported to Helix
         /// </summary>
         /// <remarks>
@@ -35,15 +27,6 @@ namespace Microsoft.DotNet.Helix.Sdk
         /// </remarks>
         [Required]
         public string Type { get; set; }
-
-        /// <summary>
-        ///   The 'build' value reported to Helix
-        /// </summary>
-        /// <remarks>
-        ///   This value is used to filter and sort jobs on Mission Control
-        /// </remarks>
-        [Required]
-        public string Build { get; set; }
 
         /// <summary>
         ///   The Helix queue this job should run on
@@ -69,14 +52,30 @@ namespace Microsoft.DotNet.Helix.Sdk
         public string JobCorrelationId { get; set; }
 
         /// <summary>
+        ///   When the task finishes, the results container uri should be available in case we want to download files.
+        /// </summary>
+        [Output]
+        public string ResultsContainerUri { get; set; }
+
+        /// <summary>
+        ///   If the job is internal, we need to give the DownloadFromResultsContainer task the Write SAS to download files.
+        /// </summary>
+        [Output]
+        public string ResultsContainerReadSAS { get; set; }
+
+        /// <summary>
         ///   A collection of commands that will run for each work item before any work item commands.
-        ///   Use ';' to separate commands and escape a ';' with ';;'
+        ///   Use a semicolon to delimit these and escape semicolons by percent coding them ('%3B').
+        ///   NOTE: This is different behavior from the WorkItem PreCommands, where semicolons are escaped
+        ///   by using double semicolons (';;').
         /// </summary>
         public string[] PreCommands { get; set; }
 
         /// <summary>
         ///   A collection of commands that will run for each work item after any work item commands.
-        ///   Use ';' to separate commands and escape a ';' with ';;'
+        ///   Use a semicolon to delimit these and escape semicolons by percent coding them ('%3B').
+        ///   NOTE: This is different behavior from the WorkItem PostCommands, where semicolons are escaped
+        ///   by using double semicolons (';;').
         /// </summary>
         public string[] PostCommands { get; set; }
 
@@ -107,9 +106,15 @@ namespace Microsoft.DotNet.Helix.Sdk
         ///     PreCommands
         ///       A collection of commands that will run for this work item before the 'Command' Runs
         ///       Use ';' to separate commands and escape a ';' with ';;'
+        ///       NOTE: This is different behavior from the Helix PreCommands, where semicolons are escaped
+        ///       with percent coding.
         ///     PostCommands
         ///       A collection of commands that will run for this work item after the 'Command' Runs
         ///       Use ';' to separate commands and escape a ';' with ';;'
+        ///       NOTE: This is different behavior from the Helix PostCommands, where semicolons are escaped
+        ///       with percent coding.
+        ///     Destination
+        ///       The directory in which to unzip the correlation payload on the Helix agent
         /// </remarks>
         public ITaskItem[] WorkItems { get; set; }
 
@@ -130,41 +135,41 @@ namespace Microsoft.DotNet.Helix.Sdk
 
         private CommandPayload _commandPayload;
 
-        protected override async Task ExecuteCore()
+        protected override async Task ExecuteCore(CancellationToken cancellationToken)
         {
             if (string.IsNullOrEmpty(AccessToken) && string.IsNullOrEmpty(Creator))
             {
-                Log.LogError("Creator is required when using anonymous access.");
+                Log.LogError(FailureCategory.Build, "Creator is required when using anonymous access.");
                 return;
             }
 
             if (!string.IsNullOrEmpty(AccessToken) && !string.IsNullOrEmpty(Creator))
             {
-                Log.LogError("Creator is forbidden when using authenticated access.");
+                Log.LogError(FailureCategory.Build, "Creator is forbidden when using authenticated access.");
                 return;
             }
 
-            Source = Source.ToLowerInvariant();
             Type = Type.ToLowerInvariant();
-            Build = Build.ToLowerInvariant();
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             using (_commandPayload = new CommandPayload(this))
             {
                 var currentHelixApi = HelixApi;
 
                 IJobDefinition def = currentHelixApi.Job.Define()
-                    .WithSource(Source)
                     .WithType(Type)
-                    .WithBuild(Build)
                     .WithTargetQueue(TargetQueue)
                     .WithMaxRetryCount(MaxRetryCount);
-                Log.LogMessage($"Initialized job definition with source '{Source}', type '{Type}', build number '{Build}', and target queue '{TargetQueue}'");
+                Log.LogMessage($"Initialized job definition with type '{Type}', and target queue '{TargetQueue}'");
 
                 if (!string.IsNullOrEmpty(Creator))
                 {
                     def = def.WithCreator(Creator);
                     Log.LogMessage($"Setting creator to '{Creator}'");
                 }
+
+                Log.LogMessage(MessageImportance.High, $"Uploading payloads for Job on {TargetQueue}...");
 
                 if (CorrelationPayloads != null)
                 {
@@ -183,13 +188,15 @@ namespace Microsoft.DotNet.Helix.Sdk
                 }
                 else
                 {
-                    Log.LogError("SendHelixJob given no WorkItems to send.");
+                    Log.LogError(FailureCategory.Build, "SendHelixJob given no WorkItems to send.");
                 }
 
                 if (_commandPayload.TryGetPayloadDirectory(out string directory))
                 {
                     def = def.WithCorrelationPayloadDirectory(directory);
                 }
+
+                Log.LogMessage(MessageImportance.High, $"Finished uploading payloads for Job on {TargetQueue}...");
 
                 if (HelixProperties != null)
                 {
@@ -205,15 +212,17 @@ namespace Microsoft.DotNet.Helix.Sdk
                     return;
                 }
 
-                Log.LogMessage(MessageImportance.Normal, "Sending Job...");
+                Log.LogMessage(MessageImportance.High, $"Sending Job to {TargetQueue}...");
 
-                ISentJob job = await def.SendAsync(msg => Log.LogMessage(msg));
+                cancellationToken.ThrowIfCancellationRequested();
+                ISentJob job = await def.SendAsync(msg => Log.LogMessage(msg), cancellationToken);
                 JobCorrelationId = job.CorrelationId;
+                ResultsContainerUri = job.ResultsContainerUri;
+                ResultsContainerReadSAS = job.ResultsContainerReadSAS;
+                cancellationToken.ThrowIfCancellationRequested();
             }
 
-            string mcUri = await GetMissionControlResultUri();
-
-            Log.LogMessage(MessageImportance.High, $"Results will be available from {mcUri}");
+            cancellationToken.ThrowIfCancellationRequested();
         }
 
         private IJobDefinition AddProperty(IJobDefinition def, ITaskItem property)
@@ -340,7 +349,7 @@ namespace Microsoft.DotNet.Helix.Sdk
 
             // Capture helix command exit code, in case work item command (i.e xunit call) exited with a failure,
             // this way we can exit the process honoring that exit code, needed for retry.
-            yield return IsPosixShell ? $"{exitCodeVariableName}=$?" : $"set {exitCodeVariableName}=%ERRORLEVEL%";
+            yield return IsPosixShell ? $"export {exitCodeVariableName}=$?" : $"set {exitCodeVariableName}=%ERRORLEVEL%";
 
             if (workItem.TryGetMetadata("PostCommands", out string workItemPostCommandsString))
             {
@@ -411,11 +420,20 @@ namespace Microsoft.DotNet.Helix.Sdk
         {
             string path = correlationPayload.GetMetadata("FullPath");
             string uri = correlationPayload.GetMetadata("Uri");
+            string destination = correlationPayload.GetMetadata("Destination") ?? "";
 
             if (!string.IsNullOrEmpty(uri))
             {
-                Log.LogMessage(MessageImportance.Low, $"Adding Correlation Payload URI '{uri}'");
-                return def.WithCorrelationPayloadUris(new Uri(uri));
+                Log.LogMessage(MessageImportance.Low, $"Adding Correlation Payload URI '{uri}', destination '{destination}'");
+
+                if (!string.IsNullOrEmpty(destination))
+                {
+                    return def.WithCorrelationPayloadUris(new Dictionary<Uri, string>() { { new Uri(uri), destination } });
+                }
+                else
+                {
+                    return def.WithCorrelationPayloadUris(new Uri(uri));
+                }
             }
 
             if (Directory.Exists(path))
@@ -423,58 +441,18 @@ namespace Microsoft.DotNet.Helix.Sdk
                 string includeDirectoryNameStr = correlationPayload.GetMetadata("IncludeDirectoryName");
                 bool.TryParse(includeDirectoryNameStr, out bool includeDirectoryName);
 
-                Log.LogMessage(MessageImportance.Low, $"Adding Correlation Payload Directory '{path}'");
-                return def.WithCorrelationPayloadDirectory(path, includeDirectoryName);
+                Log.LogMessage(MessageImportance.Low, $"Adding Correlation Payload Directory '{path}', destination '{destination}'");
+                return def.WithCorrelationPayloadDirectory(path, includeDirectoryName, destination);
             }
 
             if (File.Exists(path))
             {
-                Log.LogMessage(MessageImportance.Low, $"Adding Correlation Payload Archive '{path}'");
-                return def.WithCorrelationPayloadArchive(path);
+                Log.LogMessage(MessageImportance.Low, $"Adding Correlation Payload Archive '{path}', destination '{destination}'");
+                return def.WithCorrelationPayloadArchive(path, destination);
             }
 
-            Log.LogError($"Correlation Payload '{path}' not found.");
+            Log.LogError(FailureCategory.Build, $"Correlation Payload '{path}' not found.");
             return def;
-        }
-
-        private async Task<string> GetMissionControlResultUri()
-        {
-            var creator = Creator;
-            if (string.IsNullOrEmpty(creator))
-            {
-                using (var client = new HttpClient
-                {
-                    DefaultRequestHeaders =
-                    {
-                        UserAgent = { Helpers.UserAgentHeaderValue },
-                    },
-                })
-                {
-                    try
-                    {
-                        string githubJson =
-                            await client.GetStringAsync($"https://api.github.com/user?access_token={AccessToken}");
-                        var data = JObject.Parse(githubJson);
-                        if (data["login"] == null)
-                        {
-                            throw new Exception("Github user has no login");
-                        }
-
-                        creator = data["login"].ToString();
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.LogMessage(MessageImportance.High, "Failed to retrieve username from GitHub -- {0}", ex.ToString());
-                        return $"Mission Control (generation of MC link failed -- {ex.Message})";
-                    }
-                }
-            }
-
-            var build = UrlEncoder.Default.Encode(Build).Replace('%', '~');
-            var type = UrlEncoder.Default.Encode(Type).Replace('%', '~');
-            var source = UrlEncoder.Default.Encode(Source).Replace('%', '~');
-            var encodedCreator = UrlEncoder.Default.Encode(creator).Replace('%', '~');
-            return $"https://mc.dot.net/#/user/{encodedCreator}/{source}/{type}/{build}";
         }
     }
 }

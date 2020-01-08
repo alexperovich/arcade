@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netcoreapp2.1;net472</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+    <ExcludeFromSourceBuild>true</ExcludeFromSourceBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\src\Microsoft.DotNet.XUnitExtensions.csproj" />
+  </ItemGroup>
+
+</Project>

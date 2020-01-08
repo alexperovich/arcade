@@ -5,7 +5,6 @@ namespace Xunit.ConsoleClient
 {
     public class Program
     {
-        [STAThread]
         public static int Main(string[] args)
         {
             // This code must not contain any references to code in any external assembly (or any code that references any code in any
@@ -13,9 +12,7 @@ namespace Xunit.ConsoleClient
             var consoleLock = new object();
             var internalDiagnosticsMessageSink = DiagnosticMessageSink.ForInternalDiagnostics(consoleLock, args.Contains("-internaldiagnostics"), args.Contains("-nocolor"));
 
-#if !WINDOWS_UWP
             using (AssemblyHelper.SubscribeResolveForAssembly(typeof(Program), internalDiagnosticsMessageSink))
-#endif
                 return new ConsoleRunner(consoleLock).EntryPoint(args);
         }
     }

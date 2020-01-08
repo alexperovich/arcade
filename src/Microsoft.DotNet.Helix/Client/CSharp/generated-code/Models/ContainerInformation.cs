@@ -6,13 +6,15 @@ namespace Microsoft.DotNet.Helix.Client.Models
 {
     public partial class ContainerInformation
     {
-        public ContainerInformation(DateTimeOffset created, DateTimeOffset expiration, string creator, string containerName, string storageAccountName)
+        public ContainerInformation(DateTimeOffset created, DateTimeOffset expiration, string creator, string containerName, string storageAccountName, Guid subscriptionId, string region)
         {
             Created = created;
             Expiration = expiration;
             Creator = creator;
             ContainerName = containerName;
             StorageAccountName = storageAccountName;
+            SubscriptionId = subscriptionId;
+            Region = region;
         }
 
         [JsonProperty("Created")]
@@ -36,17 +38,34 @@ namespace Microsoft.DotNet.Helix.Client.Models
         [JsonProperty("StorageAccountName")]
         public string StorageAccountName { get; set; }
 
+        [JsonProperty("SubscriptionId")]
+        public Guid SubscriptionId { get; set; }
+
+        [JsonProperty("Region")]
+        public string Region { get; set; }
+
         [JsonIgnore]
         public bool IsValid
         {
             get
             {
-                return
-                    !(Created == default) &&
-                    !(Expiration == default) &&
-                    !(string.IsNullOrEmpty(Creator)) &&
-                    !(string.IsNullOrEmpty(ContainerName)) &&
-                    !(string.IsNullOrEmpty(StorageAccountName));
+                if (string.IsNullOrEmpty(Creator))
+                {
+                    return false;
+                }
+                if (string.IsNullOrEmpty(ContainerName))
+                {
+                    return false;
+                }
+                if (string.IsNullOrEmpty(StorageAccountName))
+                {
+                    return false;
+                }
+                if (string.IsNullOrEmpty(Region))
+                {
+                    return false;
+                }
+                return true;
             }
         }
     }

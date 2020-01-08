@@ -1,15 +1,16 @@
 using System;
+using System.Diagnostics;
 using System.Net;
-using System.Threading.Tasks;
+using System.Threading;
 using Microsoft.Build.Framework;
 using Microsoft.DotNet.Helix.Client;
-using Microsoft.Rest;
-using Task = Microsoft.Build.Utilities.Task;
 
 namespace Microsoft.DotNet.Helix.Sdk
 {
-    public abstract class HelixTask : BaseTask
+    public abstract class HelixTask : BaseTask, ICancelableTask
     {
+        private readonly CancellationTokenSource _cancel = new CancellationTokenSource();
+
         /// <summary>
         /// The Helix Api Base Uri
         /// </summary>
@@ -36,31 +37,41 @@ namespace Microsoft.DotNet.Helix.Sdk
             return ApiFactory.GetAuthenticated(BaseUri, AccessToken);
         }
 
+        public void Cancel()
+        {
+            _cancel.Cancel();
+        }
+
         public sealed override bool Execute()
         {
             try
             {
                 HelixApi = GetHelixApi();
                 AnonymousApi = ApiFactory.GetAnonymous(BaseUri);
-                System.Threading.Tasks.Task.Run(ExecuteCore).GetAwaiter().GetResult();
+                System.Threading.Tasks.Task.Run(() => ExecuteCore(_cancel.Token)).GetAwaiter().GetResult();
             }
-            catch (HttpOperationException ex) when (ex.Response.StatusCode == HttpStatusCode.Unauthorized)
+            catch (RestApiException ex) when (ex.Response.Status == (int)HttpStatusCode.Unauthorized)
             {
-                Log.LogError("Helix operation returned 'Unauthorized'. Did you forget to set HelixAccessToken?");
+                Log.LogError(FailureCategory.Build, "Helix operation returned 'Unauthorized'. Did you forget to set HelixAccessToken?");
             }
-            catch (HttpOperationException ex) when (ex.Response.StatusCode == HttpStatusCode.Forbidden)
+            catch (RestApiException ex) when (ex.Response.Status == (int)HttpStatusCode.Forbidden)
             {
-                Log.LogError("Helix operation returned 'Forbidden'.");
+                Log.LogError(FailureCategory.Build, "Helix operation returned 'Forbidden'.");
+            }
+            catch (OperationCanceledException ocex) when (ocex.CancellationToken == _cancel.Token)
+            {
+                // Canceled
+                return false;
             }
             catch (Exception ex)
             {
-                Log.LogErrorFromException(ex, true, true, null);
+                Log.LogErrorFromException(FailureCategory.Helix, ex, true, true, null);
             }
 
             return !Log.HasLoggedErrors;
         }
 
-        protected abstract System.Threading.Tasks.Task ExecuteCore();
+        protected abstract System.Threading.Tasks.Task ExecuteCore(CancellationToken cancellationToken);
 
         protected void LogExceptionRetry(Exception ex)
         {

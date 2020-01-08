@@ -12,7 +12,11 @@ Azure DevOps [![Build Status](https://dev.azure.com/dnceng/public/_apis/build/st
 
 Packages are published daily to our tools feed:
 
-> `https://dotnetfeed.blob.core.windows.net/dotnet-core/index.json`
+> `https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-eng/nuget/v3/index.json`
+
+This feed is browsable from here:
+
+> https://dev.azure.com/dnceng/public/_packaging?_a=feed&feed=dotnet-eng
 
 ### Source Code
 
@@ -24,7 +28,7 @@ Documentation, tutorials, and guides may be found in the [Start Here](Documentat
 
 ### How to contribute
 
-- How to contribute guide [TBD]
+- [How to contribute to Arcade guide](Documentation/Policy/ArcadeContributorGuidance.md)
 
 - [Pull requests](https://github.com/dotnet/arcade/pulls): [Open](https://github.com/dotnet/arcade/pulls?q=is%3Aopen+is%3Apr)/[Closed](https://github.com/dotnet/arcade/pulls?q=is%3Apr+is%3Aclosed)
 

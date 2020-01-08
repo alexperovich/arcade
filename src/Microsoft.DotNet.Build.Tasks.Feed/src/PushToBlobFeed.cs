@@ -8,7 +8,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using MSBuild = Microsoft.Build.Utilities;
 
@@ -56,6 +55,8 @@ namespace Microsoft.DotNet.Build.Tasks.Feed
         public string[] ManifestBuildData { get; set; }
 
         public string AssetManifestPath { get; set; }
+
+        public bool IsStableBuild { get; set; }
 
         public override bool Execute()
         {
@@ -113,7 +114,6 @@ namespace Microsoft.DotNet.Build.Tasks.Feed
                 {
                     await blobFeedAction.PublishToFlatContainerAsync(ItemsToPush, 
                         MaxClients, 
-                        UploadTimeoutInMinutes, 
                         pushOptions);
                     blobArtifacts = ConcatBlobArtifacts(blobArtifacts, ItemsToPush);
                 }
@@ -140,10 +140,7 @@ namespace Microsoft.DotNet.Build.Tasks.Feed
                         return !Log.HasLoggedErrors;
                     }
 
-                    await blobFeedAction.PublishToFlatContainerAsync(symbolItems, 
-                        MaxClients, 
-                        UploadTimeoutInMinutes, 
-                        pushOptions);
+                    await blobFeedAction.PublishToFlatContainerAsync(symbolItems, MaxClients, pushOptions);
                     if (Log.HasLoggedErrors)
                     {
                         return !Log.HasLoggedErrors;
@@ -151,6 +148,12 @@ namespace Microsoft.DotNet.Build.Tasks.Feed
 
                     packageArtifacts = ConcatPackageArtifacts(packageArtifacts, packageItems);
                     blobArtifacts = ConcatBlobArtifacts(blobArtifacts, symbolItems);
+                }
+
+                if(!BuildManifestUtil.ManifestBuildDataHasLocationProperty(ManifestBuildData))
+                {
+                    string[] locationAttribute = new string[] { $"Location={ExpectedFeedUrl}" };
+                    ManifestBuildData = ManifestBuildData == null ? locationAttribute : ManifestBuildData.Concat(locationAttribute).ToArray();
                 }
 
                 BuildManifestUtil.CreateBuildManifest(Log,
@@ -161,7 +164,8 @@ namespace Microsoft.DotNet.Build.Tasks.Feed
                     ManifestBuildId,
                     ManifestBranch,
                     ManifestCommit,
-                    ManifestBuildData);
+                    ManifestBuildData,
+                    IsStableBuild);
             }
             catch (Exception e)
             {

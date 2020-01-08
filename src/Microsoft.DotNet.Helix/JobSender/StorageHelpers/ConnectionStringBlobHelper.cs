@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.DotNet.Helix.Client.Models;
 using Microsoft.WindowsAzure.Storage;
@@ -20,7 +21,7 @@ namespace Microsoft.DotNet.Helix.Client
             _connectionString = connectionString;
         }
 
-        public async Task<IBlobContainer> GetContainerAsync(string requestedName)
+        public async Task<IBlobContainer> GetContainerAsync(string requestedName, string targetQueue, CancellationToken cancellationToken)
         {
             CloudStorageAccount account = CloudStorageAccount.Parse(_connectionString);
             CloudBlobClient client = account.CreateCloudBlobClient();
@@ -43,17 +44,29 @@ namespace Microsoft.DotNet.Helix.Client
             public override string WriteSas => _container.GetSharedAccessSignature(SasReadWrite);
 
 
-            private static readonly SharedAccessBlobPolicy SasReadOnly = new SharedAccessBlobPolicy
+            private SharedAccessBlobPolicy SasReadOnly
             {
-                SharedAccessExpiryTime = DateTime.UtcNow.AddDays(30),
-                Permissions = SharedAccessBlobPermissions.Read
-            };
+                get
+                {
+                    return new SharedAccessBlobPolicy
+                    {
+                        SharedAccessExpiryTime = DateTime.UtcNow.AddDays(30),
+                        Permissions = SharedAccessBlobPermissions.Read
+                    };
+                }
+            }
 
-            private static readonly SharedAccessBlobPolicy SasReadWrite = new SharedAccessBlobPolicy
+            private SharedAccessBlobPolicy SasReadWrite
             {
-                SharedAccessExpiryTime = DateTime.UtcNow.AddDays(30),
-                Permissions = SharedAccessBlobPermissions.Write | SharedAccessBlobPermissions.Read
-            };
+                get
+                {
+                    return new SharedAccessBlobPolicy
+                    {
+                        SharedAccessExpiryTime = DateTime.UtcNow.AddDays(30),
+                        Permissions = SharedAccessBlobPermissions.Write | SharedAccessBlobPermissions.Read
+                    };
+                }
+            }
 
             protected override (CloudBlockBlob blob, string sasToken) GetBlob(string blobName)
             {

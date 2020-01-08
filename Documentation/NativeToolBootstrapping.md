@@ -4,21 +4,21 @@ This document is intended to provide insight into the design of native toolset b
 
 ## Overview
 
-Arcade will provide a set of common installation libraries which will be provided to partipating repos via Maestro.  The common libraries will be used to acquire "installers" for native components.
+Arcade will provide a set of common installation libraries which will be provided to participating repos via Maestro.  The common libraries will be used to acquire "installers" for native components.
 
-Repo's will be provided a local bootstrapping file (both an ps1 and an sh file).  The bootstrapper uses the common libraries to install native toolset dependencies.
+Repos will be provided a local bootstrapping file (both a ps1 and an sh file).  The bootstrapper uses the common libraries to install native toolset dependencies.
 
 ## Definitions
 
-Tool - a native toolset dependency (cmake, python, etc...)
+*Tool* &ndash; a native toolset dependency (cmake, python, etc...)
 
-Native Asset - Packaged native artifact, also known as a tool but specifically related to the asset as provided by the publisher of the tool.  ie, in the case of cmake, one of the zip or tar files from https://cmake.org/download/
+*Native Asset* &ndash; Packaged native artifact, also known as a tool but specifically related to the asset as provided by the publisher of the tool.  ie, in the case of cmake, one of the zip or tar files from https://cmake.org/download/
 
-Installer - a script(s) used to deploy a native asset
+*Installer* &ndash; a script(s) used to deploy a native asset
 
-Shim - wrapper script which is deployed to a platform that is referenced to execute the provided tool
+*Shim* &ndash; wrapper script which is deployed to a platform that is referenced to execute the provided tool
 
-Common Library - set of libraries available for native asset deployment to a platform
+*Common Library* &ndash; set of libraries available for native asset deployment to a platform
 
 ## Arcade toolset libraries
 
@@ -30,9 +30,8 @@ The entry-point scripts are the scripts which repos will use to bootstrap their 
 
 Entry-point scripts are:
 
-- init-tools-native.cmd
-
-- init-tools-native.sh
+* init-tools-native.cmd
+* init-tools-native.sh
 
 Add a call to these scripts in your build script to bootstrap all tools specified in your global.json.
 
@@ -68,6 +67,8 @@ It is possible that a native toolset will require more than one shim.
 
 Native toolset assets will be placed in an Azure blob storage container.  The default location is https://netcorenativeassets.blob.core.windows.net/resource-packages
 
+You can browse the installers available using this url - https://netcorenativeassets.blob.core.windows.net/resource-packages/?restype=container&comp=list
+
 ## Blob storage layout
 
 ```Text
@@ -84,7 +85,7 @@ Native toolset assets will be placed in an Azure blob storage container.  The de
 
 ### external resources folder structure
 
-The `external` folder is a folder structure that contains all installers and resources for external depencencies.  These are zips / tarballs /etc... provided by a tool publisher which we have republished into Azure blob storage, organized in folders by the operating system and tool to be installed.
+The `external` folder is a folder structure that contains all installers and resources for external dependencies.  These are zips / tarballs /etc... provided by a tool publisher which we have republished into Azure blob storage, organized in folders by the operating system and tool to be installed.
 
 ## Example - resource-packages container
 
@@ -105,6 +106,10 @@ The `external` folder is a folder structure that contains all installers and res
 
 ## Questions
 
+**How do I know what installers are already available in the container?**
+
+https://netcorenativeassets.blob.core.windows.net/resource-packages/?restype=container&comp=list
+
 **How will we handle installers if there are distro specific requirements?**
 
 This will likely come up very quickly and deserves consideration.  The current plan is to allow each installer to handle this as needed.
@@ -116,6 +121,8 @@ This will likely come up very quickly and deserves consideration.  The current p
 * **Windows**
   * Packages should be uploaded to the `windows/<tool-name>` folder structure in the container.
   * Naming convention for packages is as follows `<tool-name>-<version>-<win32 | win64>-<x86 | x64>.zip`
+  * If a zip file will be unpacked on Windows, create it only using a tool that follows the zip format's specifications and allows for reliable extraction using .NET's `System.IO.Compression` APIs or `powershell`
+    * Creating the zip file in `powershell` using `Compress-Archive` would be one recommended approach.
   * Once the package has been uploaded, you should be able to add a reference to it in your global.json file.
 
 * **Linux**
@@ -151,4 +158,4 @@ Example:
 
 I think that this model will allow us to be a bit more flexible in the types of dependencies that we install and provide a method for non-xcopy deployable dependencies to be installed in the future.  The tool installers may make use of common libraries for installs though.
 
-We are looking into improving this experience to generizice the installers and reduce boilerplate.
+We are looking into improving this experience to genericize the installers and reduce boilerplate.

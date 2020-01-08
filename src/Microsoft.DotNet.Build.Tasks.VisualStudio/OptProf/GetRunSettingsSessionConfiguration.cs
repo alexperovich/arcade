@@ -90,7 +90,7 @@ $@"<TestStores>
             catch (Exception e)
             {                
                 throw new InvalidDataException(
-                    $"Unable to read boostrapper info: {e.Message}{Environment.NewLine}" +
+                    $"Unable to read bootstrapper info: {e.Message}{Environment.NewLine}" +
                     $"Content of BootstrapperInfo.json:{Environment.NewLine}" +
                     $"{bootstrapperInfoJson}");
             }
@@ -141,7 +141,7 @@ $@"<TestStores>
         private static string GetTestFilters(OptProfTrainingConfiguration config)
         {
             var productTests = config.Products?.Any() == true
-                ? config.Products.SelectMany(x => x.Tests.SelectMany(y => y.TestCases))
+                ? config.Products.SelectMany(x => x.Tests.SelectMany(y => y.TestCases ?? y.FilteredTestCases.SelectMany(z => z.TestCases)))
                 : Enumerable.Empty<string>();
 
             var assemblyTests = config.Assemblies?.Any() == true

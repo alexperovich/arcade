@@ -24,8 +24,14 @@ namespace Microsoft.Cci.Writers.CSharp
 
             if (evnt.GetHiddenBaseEvent(_filter) != Dummy.Event)
                 WriteKeyword("new");
+
+            if (accessor.Attributes.HasIsReadOnlyAttribute() && (LangVersion >= LangVersion8_0))
+            {
+                WriteKeyword("readonly");
+            }
+
             WriteKeyword("event");
-            WriteTypeName(evnt.Type);
+            WriteTypeName(evnt.Type, evnt.Attributes);
             WriteIdentifier(evnt.Name);
 
             if (_forCompilation && !evnt.IsAbstract())

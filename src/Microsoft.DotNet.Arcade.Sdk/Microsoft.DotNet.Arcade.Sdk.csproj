@@ -1,12 +1,14 @@
-<!-- Licensed to the .NET Foundation under one or more agreements. The .NET Foundation licenses this file to you under the MIT license. See the LICENSE file in the project root for more information. -->
-
+﻿<!-- Licensed to the .NET Foundation under one or more agreements. The .NET Foundation licenses this file to you under the MIT license. See the LICENSE file in the project root for more information. -->
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net461;netcoreapp2.0</TargetFrameworks>
-
+    <TargetFrameworks>net472;netcoreapp2.1</TargetFrameworks>
+    <TargetFrameworks Condition="'$(DotNetBuildFromSource)' == 'true'">netcoreapp2.1</TargetFrameworks>
+    <LangVersion>preview</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ExcludeFromSourceBuild>false</ExcludeFromSourceBuild>
 
     <IsPackable>true</IsPackable>
+    <!-- Generate package during Build, rather than Pack, so that it can be used during Test. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 
     <Description>Common toolset for repositories</Description>
@@ -17,6 +19,7 @@
     <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
     <EnableGeneratedPackageContent>false</EnableGeneratedPackageContent>
     <_GeneratedVersionFilePath>$(IntermediateOutputPath)DefaultVersions.Generated.props</_GeneratedVersionFilePath>
+    <NoWarn>3021;NU5105</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,6 +29,20 @@
     <PackageReference Include="System.Net.Http" Version="$(SystemNetHttpVersion)" />
     <PackageReference Include="System.Collections.Immutable" Version="$(SystemCollectionsImmutableVersion)" />
     <PackageReference Include="System.Reflection.Metadata" Version="$(SystemReflectionMetadataVersion)" />
+  </ItemGroup>
+
+  <!-- Required for compiling "InstallDotNetCore.cs" -->
+  <ItemGroup Condition="'$(DotNetBuildFromSource)' != 'true'">
+    <PackageReference Include="Microsoft.Bcl.Json.Sources" Version="$(MicrosoftBclJsonSourcesVersion)" PrivateAssets="All" />
+    <PackageReference Include="System.Buffers" Version="$(SystemBuffersVersion)" />
+    <PackageReference Include="System.Memory" Version="$(SystemMemoryVersion)" />
+    <PackageReference Include="System.Numerics.Vectors" Version="$(SystemNumericsVectorsVersion)" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="$(SystemRuntimeCompilerServicesUnsafeVersion)" />
+    <PackageReference Include="System.Threading.Tasks.Extensions" Version="$(SystemThreadingTasksExtensionVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Microsoft.DotNet.Arcade.Sdk.Tests" />
   </ItemGroup>
 
   <ItemGroup>
@@ -42,12 +59,10 @@
 
   <ItemGroup>
     <Compile Include="..\Common\AssemblyResolution.cs" Link="src\AssemblyResolution.cs" />
+    <Compile Remove="src\InstallDotNetCore.cs" Condition="'$(DotNetBuildFromSource)' == 'true'" />
   </ItemGroup>
   
-  <Target Name="_GenerateSdkVersionFile"
-          Inputs="$(MSBuildAllProjects)"
-          Outputs="$(_GeneratedVersionFilePath)"
-          BeforeTargets="GenerateNuSpec">
+  <Target Name="_GenerateSdkVersionFile" Inputs="$(MSBuildAllProjects)" Outputs="$(_GeneratedVersionFilePath)" BeforeTargets="GenerateNuSpec">
 
     <PropertyGroup>
       <_SdkVersionPropsContent>
@@ -55,15 +70,19 @@
 <Project>
   <PropertyGroup>
     <ArcadeSdkVersion>$(PackageVersion)</ArcadeSdkVersion>
+    <MicrosoftNetCompilersToolsetVersion>$(MicrosoftNetCompilersToolsetVersion)</MicrosoftNetCompilersToolsetVersion>
+    <MicrosoftSourceLinkVersion>$(MicrosoftSourceLinkVersion)</MicrosoftSourceLinkVersion>
+    <MicrosoftDiaSymReaderPdb2PdbVersion>$(MicrosoftDiaSymReaderPdb2PdbVersion)</MicrosoftDiaSymReaderPdb2PdbVersion>
+    <XliffTasksVersion>$(XliffTasksVersion)</XliffTasksVersion>
   </PropertyGroup>
 </Project>]]>
   </_SdkVersionPropsContent>
     </PropertyGroup>
     
-    <WriteLinesToFile File="$(_GeneratedVersionFilePath)" Lines="$(_SdkVersionPropsContent)" Overwrite="true"/>
+    <WriteLinesToFile File="$(_GeneratedVersionFilePath)" Lines="$(_SdkVersionPropsContent)" Overwrite="true" />
 
     <ItemGroup>
-      <FileWrites Include="$(_GeneratedVersionFilePath)"/>
+      <FileWrites Include="$(_GeneratedVersionFilePath)" />
     </ItemGroup>
   </Target>
 

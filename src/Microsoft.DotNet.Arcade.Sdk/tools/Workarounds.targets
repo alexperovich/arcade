@@ -32,9 +32,17 @@
     <OutDir/>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(IsWpfTempProject)' == 'true' and '$(TargetFrameworkIdentifier)' == '.NETFramework'">
-    <Reference Include="mscorlib" Pack="false" />
-  </ItemGroup>
+  <!--
+    Workaround to fix that Visual Studio sometimes uses a special MSBuild evaluation
+    mode where all common conditions (e.g., inside ItemGroup) are ignored.
+  -->
+  <Choose>
+    <When Condition=" '$(IsWpfTempProject)' == 'true' and '$(TargetFrameworkIdentifier)' == '.NETFramework' ">
+      <ItemGroup>
+        <Reference Include="mscorlib" Pack="false" />
+      </ItemGroup>
+    </When>
+  </Choose>
 
   <!--
     Workaround for a race condition https://github.com/Microsoft/msbuild/issues/1479.
@@ -44,7 +52,7 @@
     <TargetFrameworkMonikerAssemblyAttributesFileClean>true</TargetFrameworkMonikerAssemblyAttributesFileClean>
   </PropertyGroup>
 
-  <!-- 
+  <!--
      Portable PDBs are not included in .nupkg by default. Include them unless the project produces symbol packages.
      Remove this once we migrate to .snupkg. See https://github.com/dotnet/arcade/issues/1959.
    -->
@@ -60,32 +68,83 @@
   -->
   <Target Name="InitializeStandardNuspecProperties"
           BeforeTargets="GenerateNuspec"
-          DependsOnTargets="_InitializeNuspecRepositoryInformationPropertiesWorkaround">
+          DependsOnTargets="_InitializeNuspecRepositoryInformationPropertiesWorkaround"
+          Condition="'$(IsPackable)' == 'true'">
 
     <PropertyGroup>
+      <PackageId Condition="'$(NuspecPackageId)' != ''">$(NuspecPackageId)</PackageId>
       <PackageProjectUrl Condition="'$(PackageProjectUrl)' == ''">$(RepositoryUrl)</PackageProjectUrl>
     </PropertyGroup>
 
     <Error Text="PackageDescription must be specified" Condition="'$(PackageDescription)' == ''"/>
     <Error Text="PackageProjectUrl must be specified" Condition="'$(PackageProjectUrl)' == ''"/>
+    <Error Text="RepositoryUrl must be specified" Condition="'$(RepositoryUrl)' == ''"/>
+    <Error Text="RepositoryCommit must be specified" Condition="'$(RepositoryCommit)' == ''"/>
+    <Error Text="RepositoryType must be specified" Condition="'$(RepositoryType)' == ''"/>
+    <Error Text="Either PackageLicenseExpression or PackageLicenseFile must be specified" Condition="'$(PackageLicenseExpression)' == '' and '$(PackageLicenseFile)' == ''"/>
+
+    <PropertyGroup Condition="'$(NuspecFile)' != '' and '$(NuspecProperties)' == ''">
+      <_LicenseElement/>
+      <_LicenseElement Condition="'$(PackageLicenseExpression)' != ''">
+        <license type="expression">$(PackageLicenseExpression)</license>
+      </_LicenseElement>
+      <_LicenseElement Condition="'$(PackageLicenseFile)' != ''">
+        <license type="file">$(PackageLicenseFile)</license>
+      </_LicenseElement>
+
+      <_TagsElement/>
+      <_TagsElement Condition="'$(PackageTags)' != ''">
+        <tags>$(PackageTags.Replace(';', ' '))</tags>
+      </_TagsElement>
+
+      <_IconUrlElement/>
+      <_IconUrlElement Condition="'$(PackageIcon)' == '' and '$(PackageIconUrl)' != ''">
+        <iconUrl>$(PackageIconUrl)</iconUrl>
+      </_IconUrlElement>
+
+      <_IconElement/>
+      <_IconElement Condition="'$(PackageIcon)' != ''">
+        <icon>$(PackageIcon)</icon>
+      </_IconElement>
+
+      <_IconFileElement/>
+      <_IconFileElement Condition="'$(PackageIcon)' != ''">
+        <file src="$(PackageIconFullPath)" target="$(PackageIcon)" />
+      </_IconFileElement>
+
+      <_ReleaseNotesElement/>
+      <_ReleaseNotesElement Condition="'$(PackageReleaseNotes)' != ''">
+        <releaseNotes>$(PackageReleaseNotes)</releaseNotes>
+      </_ReleaseNotesElement>
+
+      <_CommonMetadataElements>
+        <id>$(PackageId)</id>
+        <description>$(PackageDescription)</description>
+        <version>$(PackageVersion)</version>
+        <authors>$(Authors)</authors>
+        <requireLicenseAcceptance>$(PackageRequireLicenseAcceptance)</requireLicenseAcceptance>
+        $(_TagsElement)
+        $(_LicenseElement)
+        $(_IconElement)
+        $(_IconUrlElement)
+        $(_ReleaseNotesElement)
+        <projectUrl>$(PackageProjectUrl)</projectUrl>
+        <copyright>$(Copyright)</copyright>
+        <developmentDependency>$(DevelopmentDependency)</developmentDependency>
+        <serviceable>$(Serviceable)</serviceable>
+        <repository type="$(RepositoryType)" url="$(RepositoryUrl)" commit="$(RepositoryCommit)" />
+      </_CommonMetadataElements>
+
+      <_CommonFileElements>
+        $(_IconFileElement)
+      </_CommonFileElements>
+    </PropertyGroup>
 
     <ItemGroup Condition="'$(NuspecFile)' != '' and '$(NuspecProperties)' == ''">
+      <NuspecProperty Include="CommonMetadataElements=$(_CommonMetadataElements)"/>
+      <NuspecProperty Include="CommonFileElements=$(_CommonFileElements)"/>
       <NuspecProperty Include="PackageId=$(PackageId)"/>
-      <NuspecProperty Include="Authors=$(Authors)"/>
-      <NuspecProperty Include="PackageDescription=$(PackageDescription)"/>
-      <NuspecProperty Include="Copyright=$(Copyright)"/>
       <NuspecProperty Include="Version=$(PackageVersion)"/>
-      <NuspecProperty Include="Serviceable=$(Serviceable)"/>
-      <NuspecProperty Include="DevelopmentDependency=$(DevelopmentDependency)"/>
-      <NuspecProperty Include="RequireLicenseAcceptance=$(PackageRequireLicenseAcceptance)"/>
-      <NuspecProperty Include="PackageLicenseUrl=$(PackageLicenseUrl)"/>
-      <NuspecProperty Include="PackageProjectUrl=$(PackageProjectUrl)"/>
-      <NuspecProperty Include="PackageIconUrl=$(PackageIconUrl)" Condition="'$(PackageIconUrl)' != ''" />
-      <NuspecProperty Include="PackageReleaseNotes=$(PackageReleaseNotes)" Condition="'$(PackageReleaseNotes)' != ''" />
-      <NuspecProperty Include="PackageTags=$(PackageTags)" Condition="'$(PackageTags)' != ''" />
-      <NuspecProperty Include="RepositoryUrl=$(RepositoryUrl)" Condition="'$(RepositoryUrl)' != ''" />
-      <NuspecProperty Include="RepositoryType=$(RepositoryType)" Condition="'$(RepositoryType)' != ''" />
-      <NuspecProperty Include="RepositoryCommit=$(RepositoryCommit)" Condition="'$(RepositoryCommit)' != ''" />
       <NuspecProperty Include="ProjectDirectory=$(MSBuildProjectDirectory)"/>
     </ItemGroup>
     <PropertyGroup Condition="'$(NuspecFile)' != '' and '$(NuspecProperties)' == ''">
@@ -108,7 +167,7 @@
 
   <!--
     NuGet Restore uses PackageId and project name in the same namespace, so that project reference can be interchanged with a package reference.
-    This causes issues however for leaf packages that are not to be referenced (such as analyzer or tools packages) when we want to name the package 
+    This causes issues however for leaf packages that are not to be referenced (such as analyzer or tools packages) when we want to name the package
     the same as an existing project in the solution. In that case we set PackageId to an invalid but unique value for Restore and override it for Pack
     with the desired name stored in $(NuspecPackageId).
   -->
@@ -116,9 +175,25 @@
     <PackageId>*$(MSBuildProjectName)*</PackageId>
   </PropertyGroup>
 
-  <Target Name="_SetPackageId" BeforeTargets="InitializeStandardNuspecProperties;GenerateNuSpec" Condition="'$(NuspecPackageId)' != ''">
+  <!--
+    Source packaging helpers.
+  -->
+
+  <PropertyGroup Condition="'$(IsPackable)' == 'true' and '$(IsSourcePackage)' == 'true'">
+    <TargetsForTfmSpecificContentInPackage Condition="'$(NuspecFile)' == ''">$(TargetsForTfmSpecificContentInPackage);_AddSourceFilesToSourcePackage</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <Target Name="_AddSourceFilesToSourcePackage">
     <PropertyGroup>
-      <PackageId>$(NuspecPackageId)</PackageId>
+      <!-- TODO: language to dir name mapping (https://github.com/Microsoft/msbuild/issues/2101) -->
+      <_LanguageDirName>$(DefaultLanguageSourceExtension.TrimStart('.'))</_LanguageDirName>
     </PropertyGroup>
+
+    <ItemGroup>
+      <_File Remove="@(_File)"/>
+      <_File Include="$(MSBuildProjectDirectory)\**\*$(DefaultLanguageSourceExtension)" TargetDir="contentFiles/$(_LanguageDirName)/$(TargetFramework)" BuildAction="Compile" />
+
+      <TfmSpecificPackageFile Include="@(_File)" PackagePath="%(_File.TargetDir)/%(_File.RecursiveDir)%(_File.FileName)%(_File.Extension)"/>
+    </ItemGroup>
   </Target>
 </Project>

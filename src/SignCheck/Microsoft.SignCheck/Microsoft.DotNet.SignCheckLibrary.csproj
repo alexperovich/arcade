@@ -1,14 +1,15 @@
-﻿<!-- Licensed to the .NET Foundation under one or more agreements. The .NET Foundation licenses this file to you under the MIT license. See the LICENSE file in the project root for more information. -->
+<!-- Licensed to the .NET Foundation under one or more agreements. The .NET Foundation licenses this file to you under the MIT license. See the LICENSE file in the project root for more information. -->
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="$(MSBuildThisFileDirectory)\ResxWorkaround.props" />
   <PropertyGroup>
-    <TargetFramework>net461</TargetFramework>
+    <TargetFramework>net472</TargetFramework>
     <Platforms>x86</Platforms>
     <Configurations>Release;Debug</Configurations>
     <SignAssembly>false</SignAssembly>
     <RootNamespace>Microsoft.SignCheck</RootNamespace>
     <!-- This assembly is bundled in the Microsoft.DotNet.SignCheck package and is not mean to be used as a class library package. -->
     <IsPackable>false</IsPackable>
+    <ExcludeFromSourceBuild>true</ExcludeFromSourceBuild>
   </PropertyGroup>
   <PropertyGroup Label="Nuget Package Settings">
     <IsTool>true</IsTool>

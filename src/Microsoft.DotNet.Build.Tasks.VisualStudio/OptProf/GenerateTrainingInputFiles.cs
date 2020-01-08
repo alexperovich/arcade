@@ -117,9 +117,23 @@ namespace Microsoft.DotNet.Build.Tasks.VisualStudio
             foreach (var test in tests)
             {
                 var configurationsDir = Path.Combine(OutputDirectory, test.Container, "Configurations");
-                foreach (var fullyQualifiedName in test.TestCases)
+                if (test.TestCases is object)
                 {
-                    WriteEntries(ibcEntries, Path.Combine(configurationsDir, fullyQualifiedName));
+                    foreach (var fullyQualifiedName in test.TestCases)
+                    {
+                        WriteEntries(ibcEntries, Path.Combine(configurationsDir, fullyQualifiedName));
+                    }
+                }
+                else if (test.FilteredTestCases is object)
+                {
+                    foreach(var filteredTestCase in test.FilteredTestCases)
+                    {
+                        var filteredIbcEntries = ibcEntries.Where(ibc => ibc.EntryName == filteredTestCase.FileName).ToArray();
+                        foreach (var fullyQualifiedName in filteredTestCase.TestCases)
+                        {
+                            WriteEntries(filteredIbcEntries, Path.Combine(configurationsDir, fullyQualifiedName));
+                        }
+                    }
                 }
             }
         }
@@ -130,18 +144,18 @@ namespace Microsoft.DotNet.Build.Tasks.VisualStudio
 
             foreach (var entry in ibcEntries)
             {
-                var index = 0;
-                var filename = Path.GetFileNameWithoutExtension(entry.RelativeInstallationPath) + "." + index + ".IBC.json";
-                var fullFilename = Path.Combine(outDir, filename);
+                int index = 0;
+                string basePath = Path.Combine(outDir, entry.RelativeDirectoryPath.Replace("\\", "") + Path.GetFileNameWithoutExtension(entry.RelativeInstallationPath));
 
-                while (File.Exists(fullFilename))
+                string fullPath;
+                do
                 {
+                    fullPath = basePath + "." + index + ".IBC.json";
                     index++;
-                    filename = Path.GetFileNameWithoutExtension(entry.RelativeInstallationPath) + "." + index + ".IBC.json";
-                    fullFilename = Path.Combine(outDir, filename);
                 }
+                while (File.Exists(fullPath));
 
-                using (var writer = new StreamWriter(File.Open(fullFilename, FileMode.Create, FileAccess.Write, FileShare.Read)))
+                using (var writer = new StreamWriter(File.Open(fullPath, FileMode.Create, FileAccess.Write, FileShare.Read)))
                 {
                     writer.WriteLine(entry.ToJson().ToString());
                 }

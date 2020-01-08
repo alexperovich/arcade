@@ -52,7 +52,7 @@ Subscriptions have the following characteristics:
 - They have a desired quality metric for when the mapping should be applied (e.g. should tests have passed?)
 - They have a trigger for when the mapping should be applied.
 
-A subscription can be visualized with the following psuedocode
+A subscription can be visualized with the following pseudocode
 
 ```
     function runSubscription(newBuild, subscription) {}
@@ -91,7 +91,7 @@ A subscription can be visualized with the following psuedocode
 
 ## Branches, Channels and Subscriptions in a Monolithic repo world
 
-Those who have worked in a monolithic repo world in the past can have trouble understanding the issues that a distributed repository world introduces (though it has other signficant benefits).  To better understand these issues, let's look at branches, channels and subscriptions in the monolithic world.  A mono repo world is one where the vast majority of changes do not cross repository lines.  Even in monolithic repositories, there are still some distributed qualities.  For example, an update of a checked in toolset effectively is a pull of an external content channel (like a build of a compiler).  However, these types of changes tend to be fewer, and thus the product repository can generally be viewed as self-contained.
+Those who have worked in a monolithic repo world in the past can have trouble understanding the issues that a distributed repository world introduces (though it has other significant benefits).  To better understand these issues, let's look at branches, channels and subscriptions in the monolithic world.  A mono repo world is one where the vast majority of changes do not cross repository lines.  Even in monolithic repositories, there are still some distributed qualities.  For example, an update of a checked in toolset effectively is a pull of an external content channel (like a build of a compiler).  However, these types of changes tend to be fewer, and thus the product repository can generally be viewed as self-contained.
 
 When a product repository can be viewed as self-contained, the branches, channels and subscriptions concepts tend to blend together.
 - A single commit (and moving branch head by extension) covers the entire product stack.  All components are versioned in a single atomic fashion. This makes it possible to imply a *channel* based on a *branch*:
@@ -158,7 +158,7 @@ Onboarding of new repositories adds new nodes to the product dependency graph. I
     darc channel edit '.NET Core 3.0.0'
     ```
 
-Once the repository graph has more than one node (or if there is a circular dependency, like in the case of dotnet/arcade), it becomes possible to create subscriptions.  Onboarding new repositories after the initial node involves the steps above with the follolwing alterations/additions:
+Once the repository graph has more than one node (or if there is a circular dependency, like in the case of dotnet/arcade), it becomes possible to create subscriptions.  Onboarding new repositories after the initial node involves the steps above with the following alterations/additions:
 
 1. No new channel is necessary if repository/branch being onboarded is producing assets for an existing channel
 2. Repository should be onboarded onto the formal [dependency description format](https://github.com/dotnet/arcade/blob/master/Documentation/DependencyDescriptionFormat.md), enabling automated update of dependencies via Darc.
@@ -169,7 +169,7 @@ Let's say dotnet/corefx's master branch is the second branch to be onboarded.  d
 2. Onboard dotnet/corefx to Arcade style publishing.  Arcade publishing will push build assets to shared storage locations and notify the [BAR](https://github.com/dotnet/arcade/blob/master/Documentation/Maestro/BuildAssetRegistry.md) of new builds.
 3. Onboard dotnet/corefx to Arcade style dependency management - Create a Dependency.Versions.xml and associated dependency props files in the master branch.  Use Darc to add dependencies for specific dotnet/coreclr dependencies (e.g. Microsoft.NETCore.Runtime.Coreclr). These dependencies were produced by dotnet/coreclr builds and assigned to the '.NET Core 3.0.0' channel.
 4. Create content - Build dotnet/corefx's master branch (let's say its ID is 'dotnet/corefx#3')  Through arcade publishing a new entry for this build will be created in the [BAR](https://github.com/dotnet/arcade/blob/master/Documentation/Maestro/BuildAssetRegistry.md).  'dotnet/corefx#3' will not initially have a channel..
-6. Assign new dotnet/corefx build to the channel - dotnet/coreclr's master branch creates content for '.NET Core 3.0.0' channel, so use the [BAR](https://github.com/dotnet/arcade/blob/master/Documentation/Maestro/BuildAssetRegistry.md) to assign 'dotnet/corefx#3' to '.NET Core 3.0.0'
+6. Assign new dotnet/corefx build to the channel - dotnet/corefx's master branch creates content for '.NET Core 3.0.0' channel, so use the [BAR](https://github.com/dotnet/arcade/blob/master/Documentation/Maestro/BuildAssetRegistry.md) to assign 'dotnet/corefx#3' to '.NET Core 3.0.0'
 7. Assign future builds of a specific branch a default channel (if desired) - Use the [BAR](https://github.com/dotnet/arcade/blob/master/Documentation/Maestro/BuildAssetRegistry.md) to map dotnet/corefx master onto '.NET Core 3.0.0'.
 8. Add a subscription to automatically pull new dotnet/coreclr dependencies into dotnet/corefx's master branch. Subscription info
    - Mapping - Any dotnet/coreclr .NET Core 3.0.0 asset -> dotnet/corefx's master branch
@@ -363,7 +363,7 @@ dotnet/roslyn
 Let's say a user wants to do work in core-setup and aspnet/universe on previously created branches for feature/foo.  Basically that means that they probably want to have the output of those branches appear in the SDK.  Remember the Product Construction v2 rules:
 - Since all changes involve commits, that means that there must be a new branch of core-sdk that can take the output aspnet/universe and core-setup branches.
 - No more than one channel per input repo may flow input a repo+branch combo (e.g. cannot have dotnet/core-setup's .NET Core 3.0 and dotnet/core-setup's .NET Core 3.1 assets flow to dotnet/core-sdk master as there will be collisions)
-- A single channel may not recieve input from two different branches in the same repo.
+- A single channel may not receive input from two different branches in the same repo.
 
 This means that we need:
 - A new Dev channel that builds from the new branches are assigned to
@@ -754,7 +754,7 @@ Additional options:
                                               to-old = merge from new channel's branches to
                                                 existing channel's branches
 --movement-only                           Channel branch is for code movement only.
-                                            Don't branch where unecessary, instead adding new channel to
+                                            Don't branch where unnecessary, instead adding new channel to
                                             existing mappings (see Unstable builds)
 --internal                                New channel is internal-only
 ```
@@ -813,7 +813,7 @@ dotnet/core-sdk master depends on <- reachable from aspnet/universe
 
 Allow user to modify configuration (branch names, remove subscriptions, add repos, etc.)
 
-**Valdiate and apply configuration**
+**Validate and apply configuration**
 
 Validate the configuration and then apply the configuration using the [BAR](https://github.com/dotnet/arcade/blob/master/Documentation/Maestro/BuildAssetRegistry.md) REST API.
 

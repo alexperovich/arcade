@@ -1,22 +1,26 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netcoreapp2.1;$(NetFxTfm)</TargetFrameworks>
-
-    <VersionPrefix>2.2.0</VersionPrefix>
+    <TargetFrameworks>netcoreapp2.1;net472</TargetFrameworks>
+    <SignAssembly>true</SignAssembly>
 
     <Description>This package provides support for publishing assets to a NuGet protocol based feed.</Description>
     <DevelopmentDependency>true</DevelopmentDependency>
     <PackageType>MSBuildSdk</PackageType>
+    <ExcludeFromSourceBuild>true</ExcludeFromSourceBuild>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Build" Version="$(MicrosoftBuildVersion)"/>
-    <PackageReference Include="Microsoft.Build.Tasks.Core" Version="$(MicrosoftBuildTasksCoreVersion)"/>
-    <PackageReference Include="Microsoft.DotNet.Maestro.Client" Version="$(MicrosoftDotNetMaestroClientVersion)"/>
-    <PackageReference Include="Microsoft.DotNet.VersionTools" Version="$(MicrosoftDotNetVersionToolsVersion)"/>
-    <PackageReference Include="DotNet.SleetLib" Version="$(DotNetSleetLibVersion)"/>
+    <PackageReference Include="Microsoft.Azure.Storage.Blob" Version="$(MicrosoftAzureStorageBlobVersion)" />
+    <PackageReference Include="Microsoft.Build" Version="$(MicrosoftBuildVersion)" />
+    <PackageReference Include="Microsoft.Build.Tasks.Core" Version="$(MicrosoftBuildTasksCoreVersion)" />
+    <PackageReference Include="Microsoft.DotNet.Maestro.Client" Version="$(MicrosoftDotNetMaestroClientVersion)" />
+    <PackageReference Include="DotNet.SleetLib" Version="$(DotNetSleetLibVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.DotNet.VersionTools\lib\Microsoft.DotNet.VersionTools.csproj" />
   </ItemGroup>
 
   <Import Project="$(RepoRoot)eng\BuildTask.targets" />

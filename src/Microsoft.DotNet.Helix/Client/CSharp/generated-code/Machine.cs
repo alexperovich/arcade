@@ -1,12 +1,11 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Net.Http;
-using System.Net.Http.Headers;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Rest;
+using Azure;
+using Azure.Core;
 using Microsoft.DotNet.Helix.Client.Models;
 
 namespace Microsoft.DotNet.Helix.Client
@@ -19,10 +18,10 @@ namespace Microsoft.DotNet.Helix.Client
             CancellationToken cancellationToken = default
         );
 
-        Task<ChangeStateResponse> ChangeStateAsync(
+        Task<Newtonsoft.Json.Linq.JToken> ChangeStateAsync(
+            MachineStateChangeRequest body,
             string machineName,
             string queueId,
-            MachineStateChangeRequest requestInfo,
             CancellationToken cancellationToken = default
         );
 
@@ -47,22 +46,6 @@ namespace Microsoft.DotNet.Helix.Client
             CancellationToken cancellationToken = default
         )
         {
-            using (var _res = await GetMachineStatusInternalAsync(
-                machineName,
-                queueId,
-                cancellationToken
-            ).ConfigureAwait(false))
-            {
-                return _res.Body;
-            }
-        }
-
-        internal async Task<HttpOperationResponse<MachineInformation>> GetMachineStatusInternalAsync(
-            string machineName,
-            string queueId,
-            CancellationToken cancellationToken = default
-        )
-        {
             if (string.IsNullOrEmpty(machineName))
             {
                 throw new ArgumentNullException(nameof(machineName));
@@ -74,84 +57,77 @@ namespace Microsoft.DotNet.Helix.Client
             }
 
 
-            var _path = "/api/2018-03-14/machines/{queueId}/{machineName}/state";
-            _path = _path.Replace("{queueId}", Client.Serialize(queueId));
-            _path = _path.Replace("{machineName}", Client.Serialize(machineName));
+            var _baseUri = Client.Options.BaseUri;
+            var _url = new RequestUriBuilder();
+            _url.Reset(_baseUri);
+            _url.AppendPath(
+                "/api/2019-06-17/machines/{queueId}/{machineName}/state".Replace("{queueId}", Uri.EscapeDataString(Client.Serialize(queueId))).Replace("{machineName}", Uri.EscapeDataString(Client.Serialize(machineName))),
+                false);
 
-            var _query = new QueryBuilder();
 
-            var _uriBuilder = new UriBuilder(Client.BaseUri);
-            _uriBuilder.Path = _uriBuilder.Path.TrimEnd('/') + _path;
-            _uriBuilder.Query = _query.ToString();
-            var _url = _uriBuilder.Uri;
 
-            HttpRequestMessage _req = null;
-            HttpResponseMessage _res = null;
-            try
+            using (var _req = Client.Pipeline.CreateRequest())
             {
-                _req = new HttpRequestMessage(HttpMethod.Get, _url);
+                _req.Uri = _url;
+                _req.Method = RequestMethod.Get;
 
-                if (Client.Credentials != null)
+                using (var _res = await Client.SendAsync(_req, cancellationToken).ConfigureAwait(false))
                 {
-                    await Client.Credentials.ProcessHttpRequestAsync(_req, cancellationToken).ConfigureAwait(false);
-                }
+                    if (_res.Status < 200 || _res.Status >= 300)
+                    {
+                        await OnGetMachineStatusFailed(_req, _res).ConfigureAwait(false);
+                    }
 
-                _res = await Client.SendAsync(_req, cancellationToken).ConfigureAwait(false);
-                string _responseContent;
-                if (!_res.IsSuccessStatusCode)
-                {
-                    _responseContent = await _res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    var ex = new RestApiException(
-                        new HttpRequestMessageWrapper(_req, null),
-                        new HttpResponseMessageWrapper(_res, _responseContent));
-                    HandleFailedGetMachineStatusRequest(ex);
-                    HandleFailedRequest(ex);
-                    Client.OnFailedRequest(ex);
-                    throw ex;
+                    if (_res.ContentStream == null)
+                    {
+                        await OnGetMachineStatusFailed(_req, _res).ConfigureAwait(false);
+                    }
+
+                    using (var _reader = new StreamReader(_res.ContentStream))
+                    {
+                        var _content = await _reader.ReadToEndAsync().ConfigureAwait(false);
+                        var _body = Client.Deserialize<MachineInformation>(_content);
+                        return _body;
+                    }
                 }
-                _responseContent = await _res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                return new HttpOperationResponse<MachineInformation>
-                {
-                    Request = _req,
-                    Response = _res,
-                    Body = Client.Deserialize<MachineInformation>(_responseContent),
-                };
             }
-            catch (Exception)
+        }
+
+        internal async Task OnGetMachineStatusFailed(Request req, Response res)
+        {
+            string content = null;
+            if (res.ContentStream != null)
             {
-                _req?.Dispose();
-                _res?.Dispose();
-                throw;
+                using (var reader = new StreamReader(res.ContentStream))
+                {
+                    content = await reader.ReadToEndAsync().ConfigureAwait(false);
+                }
             }
+
+            var ex = new RestApiException(
+                req,
+                res,
+                content);
+            HandleFailedGetMachineStatusRequest(ex);
+            HandleFailedRequest(ex);
+            Client.OnFailedRequest(ex);
+            throw ex;
         }
 
         partial void HandleFailedChangeStateRequest(RestApiException ex);
 
-        public async Task<ChangeStateResponse> ChangeStateAsync(
+        public async Task<Newtonsoft.Json.Linq.JToken> ChangeStateAsync(
+            MachineStateChangeRequest body,
             string machineName,
             string queueId,
-            MachineStateChangeRequest requestInfo,
             CancellationToken cancellationToken = default
         )
         {
-            using (var _res = await ChangeStateInternalAsync(
-                machineName,
-                queueId,
-                requestInfo,
-                cancellationToken
-            ).ConfigureAwait(false))
+            if (body == default(MachineStateChangeRequest))
             {
-                return _res.Body;
+                throw new ArgumentNullException(nameof(body));
             }
-        }
 
-        internal async Task<HttpOperationResponse<ChangeStateResponse>> ChangeStateInternalAsync(
-            string machineName,
-            string queueId,
-            MachineStateChangeRequest requestInfo,
-            CancellationToken cancellationToken = default
-        )
-        {
             if (string.IsNullOrEmpty(machineName))
             {
                 throw new ArgumentNullException(nameof(machineName));
@@ -162,74 +138,68 @@ namespace Microsoft.DotNet.Helix.Client
                 throw new ArgumentNullException(nameof(queueId));
             }
 
-            if (requestInfo == default)
+
+            var _baseUri = Client.Options.BaseUri;
+            var _url = new RequestUriBuilder();
+            _url.Reset(_baseUri);
+            _url.AppendPath(
+                "/api/2019-06-17/machines/{queueId}/{machineName}/state".Replace("{queueId}", Uri.EscapeDataString(Client.Serialize(queueId))).Replace("{machineName}", Uri.EscapeDataString(Client.Serialize(machineName))),
+                false);
+
+
+
+            using (var _req = Client.Pipeline.CreateRequest())
             {
-                throw new ArgumentNullException(nameof(requestInfo));
-            }
+                _req.Uri = _url;
+                _req.Method = RequestMethod.Put;
 
-
-            var _path = "/api/2018-03-14/machines/{queueId}/{machineName}/state";
-            _path = _path.Replace("{queueId}", Client.Serialize(queueId));
-            _path = _path.Replace("{machineName}", Client.Serialize(machineName));
-
-            var _query = new QueryBuilder();
-
-            var _uriBuilder = new UriBuilder(Client.BaseUri);
-            _uriBuilder.Path = _uriBuilder.Path.TrimEnd('/') + _path;
-            _uriBuilder.Query = _query.ToString();
-            var _url = _uriBuilder.Uri;
-
-            HttpRequestMessage _req = null;
-            HttpResponseMessage _res = null;
-            try
-            {
-                _req = new HttpRequestMessage(HttpMethod.Put, _url);
-
-                string _requestContent = null;
-                if (requestInfo != default)
+                if (body != default(MachineStateChangeRequest))
                 {
-                    _requestContent = Client.Serialize(requestInfo);
-                    _req.Content = new StringContent(_requestContent, Encoding.UTF8)
+                    _req.Content = RequestContent.Create(Encoding.UTF8.GetBytes(Client.Serialize(body)));
+                    _req.Headers.Add("Content-Type", "application/json; charset=utf-8");
+                }
+
+                using (var _res = await Client.SendAsync(_req, cancellationToken).ConfigureAwait(false))
+                {
+                    if (_res.Status < 200 || _res.Status >= 300)
                     {
-                        Headers =
-                        {
-                            ContentType = MediaTypeHeaderValue.Parse("application/json; charset=utf-8"),
-                        },
-                    };
-                }
+                        await OnChangeStateFailed(_req, _res).ConfigureAwait(false);
+                    }
 
-                if (Client.Credentials != null)
-                {
-                    await Client.Credentials.ProcessHttpRequestAsync(_req, cancellationToken).ConfigureAwait(false);
-                }
+                    if (_res.ContentStream == null)
+                    {
+                        await OnChangeStateFailed(_req, _res).ConfigureAwait(false);
+                    }
 
-                _res = await Client.SendAsync(_req, cancellationToken).ConfigureAwait(false);
-                string _responseContent;
-                if (!_res.IsSuccessStatusCode)
-                {
-                    _responseContent = await _res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    var ex = new RestApiException(
-                        new HttpRequestMessageWrapper(_req, _requestContent),
-                        new HttpResponseMessageWrapper(_res, _responseContent));
-                    HandleFailedChangeStateRequest(ex);
-                    HandleFailedRequest(ex);
-                    Client.OnFailedRequest(ex);
-                    throw ex;
+                    using (var _reader = new StreamReader(_res.ContentStream))
+                    {
+                        var _content = await _reader.ReadToEndAsync().ConfigureAwait(false);
+                        var _body = Client.Deserialize<Newtonsoft.Json.Linq.JToken>(_content);
+                        return _body;
+                    }
                 }
-                _responseContent = await _res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                return new HttpOperationResponse<ChangeStateResponse>
-                {
-                    Request = _req,
-                    Response = _res,
-                    Body = Client.Deserialize<ChangeStateResponse>(_responseContent),
-                };
             }
-            catch (Exception)
+        }
+
+        internal async Task OnChangeStateFailed(Request req, Response res)
+        {
+            string content = null;
+            if (res.ContentStream != null)
             {
-                _req?.Dispose();
-                _res?.Dispose();
-                throw;
+                using (var reader = new StreamReader(res.ContentStream))
+                {
+                    content = await reader.ReadToEndAsync().ConfigureAwait(false);
+                }
             }
+
+            var ex = new RestApiException(
+                req,
+                res,
+                content);
+            HandleFailedChangeStateRequest(ex);
+            HandleFailedRequest(ex);
+            Client.OnFailedRequest(ex);
+            throw ex;
         }
     }
 }

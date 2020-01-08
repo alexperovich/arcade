@@ -1,13 +1,14 @@
+using HandlebarsDotNet;
+using Microsoft.DotNet.SwaggerGenerator.Modeler;
 using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using HandlebarsDotNet;
-using Microsoft.DotNet.SwaggerGenerator.Modeler;
+using TypeReference = Microsoft.DotNet.SwaggerGenerator.Modeler.TypeReference;
 
 namespace Microsoft.DotNet.SwaggerGenerator.Languages
 {
-    partial class Language
+    public partial class Language
     {
         private class CSharp : Language
         {
@@ -26,11 +27,6 @@ namespace Microsoft.DotNet.SwaggerGenerator.Languages
                 if (reference is TypeReference.ConstantTypeReference)
                 {
                     return "string";
-                }
-
-                if (reference is TypeReference.NullableTypeReference nullableType)
-                {
-                    return $"{ResolveReference(nullableType.BaseType, args)}?";
                 }
 
                 if (reference is TypeReference.TypeModelReference typeModelRef)
@@ -88,6 +84,11 @@ namespace Microsoft.DotNet.SwaggerGenerator.Languages
                     return "DateTimeOffset";
                 }
 
+                if (reference == TypeReference.Uuid)
+                {
+                    return "Guid";
+                }
+
                 if (reference == TypeReference.Void)
                 {
                     return "void";
@@ -112,7 +113,7 @@ namespace Microsoft.DotNet.SwaggerGenerator.Languages
             }
 
             [BlockHelperMethod]
-            public static void NullCheck(TextWriter output, object context, Action<TextWriter, object> template, TypeReference reference)
+            public void NullCheck(TextWriter output, object context, Action<TextWriter, object> template, TypeReference reference, bool required)
             {
                 if (reference == TypeReference.String)
                 {
@@ -123,12 +124,12 @@ namespace Microsoft.DotNet.SwaggerGenerator.Languages
                 else
                 {
                     template(output, context);
-                    output.Write(" == default");
+                    output.WriteSafeString($" == {GetDefaultExpression(reference, required)}");
                 }
             }
 
             [BlockHelperMethod]
-            public static void NotNullCheck(TextWriter output, object context, Action<TextWriter, object> template, TypeReference reference)
+            public void NotNullCheck(TextWriter output, object context, Action<TextWriter, object> template, TypeReference reference, bool required)
             {
                 if (reference == TypeReference.String)
                 {
@@ -139,26 +140,32 @@ namespace Microsoft.DotNet.SwaggerGenerator.Languages
                 else
                 {
                     template(output, context);
-                    output.Write(" != default");
+                    output.WriteSafeString($" != {GetDefaultExpression(reference, required)}");
                 }
+            }
+
+            public string GetDefaultExpression(TypeReference reference, bool required)
+            {
+                string typeElement = ResolveReference(reference, null);
+                string nullableElement = "";
+                if (!required && !IsNullable(reference))
+                {
+                    nullableElement = "?";
+                }
+                return $"default({typeElement}{nullableElement})";
             }
 
             [HelperMethod]
             public static string Method(HttpMethod method)
             {
-                if (string.Equals(method.Method, "PATCH", StringComparison.OrdinalIgnoreCase))
-                {
-                    return "new HttpMethod(\"PATCH\")";
-                }
 
                 if (method == HttpMethod.Delete || method == HttpMethod.Get || method == HttpMethod.Head ||
-                    method == HttpMethod.Options || method == HttpMethod.Post || method == HttpMethod.Put ||
-                    method == HttpMethod.Trace)
+                    method.Method.ToLower() == "patch" || method == HttpMethod.Post || method == HttpMethod.Put)
                 {
-                    return $"HttpMethod.{Helpers.PascalCase(method.Method.ToLower().AsSpan())}";
+                    return $"RequestMethod.{Helpers.PascalCase(method.Method.ToLower().AsSpan())}";
                 }
 
-                return $"new HttpMethod(\"{method.Method}\")";
+                return $"RequestMethod.Parse(\"{method.Method}\")";
             }
 
             public override Templates GetTemplates(IHandlebars hb)
@@ -170,6 +177,7 @@ namespace Microsoft.DotNet.SwaggerGenerator.Languages
             {
                 var model = context.ClientModel;
                 context.WriteTemplate(context.Options.ClientName, context.Templates["ServiceClient"], model);
+                context.WriteTemplate("PagedResponse", context.Templates["PagedResponse"], model);
 
                 foreach (TypeModel type in model.Types)
                 {
@@ -180,6 +188,39 @@ namespace Microsoft.DotNet.SwaggerGenerator.Languages
                 {
                     context.WriteTemplate(group.Name, context.Templates["MethodGroup"], group);
                 }
+            }
+
+            [HelperMethod]
+            public bool IsVerifyable(object type)
+            {
+                if (type is TypeReference.TypeModelReference modelRef)
+                {
+                    type = modelRef.Model;
+                }
+                if (type is ClassTypeModel classType)
+                {
+                    return classType.Properties.Any(p => p.Required && IsNullable(p.Type));
+                }
+
+                return false;
+            }
+
+            [HelperMethod]
+            public bool IsNullable(TypeReference type)
+            {
+                if (
+                    type is TypeReference.ArrayTypeReference ||
+                    type is TypeReference.DictionaryTypeReference ||
+                    type is TypeReference.TypeModelReference ||
+                    type == TypeReference.Any ||
+                    type == TypeReference.File ||
+                    type == TypeReference.String)
+                {
+                    return true;
+                }
+
+
+                return false;
             }
         }
     }

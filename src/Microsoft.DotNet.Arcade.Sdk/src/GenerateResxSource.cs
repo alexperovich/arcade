@@ -3,10 +3,12 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
@@ -55,6 +57,11 @@ namespace Microsoft.DotNet.Arcade.Sdk
         /// </summary>
         public bool IncludeDefaultValues { get; set; }
 
+        /// <summary>
+        /// If set to true, the generated code will include .FormatXYZ(...) methods.
+        /// </summary>
+        public bool EmitFormatMethods { get; set; }
+
         [Required]
         public string OutputPath { get; set; }
 
@@ -63,27 +70,6 @@ namespace Microsoft.DotNet.Arcade.Sdk
             CSharp,
             VisualBasic,
         }
-
-        private bool IsLetterChar(UnicodeCategory cat)
-        {
-            // letter-character:
-            //   A Unicode character of classes Lu, Ll, Lt, Lm, Lo, or Nl 
-            //   A Unicode-escape-sequence representing a character of classes Lu, Ll, Lt, Lm, Lo, or Nl
-
-            switch (cat)
-            {
-                case UnicodeCategory.UppercaseLetter:
-                case UnicodeCategory.LowercaseLetter:
-                case UnicodeCategory.TitlecaseLetter:
-                case UnicodeCategory.ModifierLetter:
-                case UnicodeCategory.OtherLetter:
-                case UnicodeCategory.LetterNumber:
-                    return true;
-            }
-
-            return false;
-        }
-
         public override bool Execute()
         {
             string namespaceName;
@@ -98,18 +84,15 @@ namespace Microsoft.DotNet.Arcade.Sdk
             string resourceAccessName = string.IsNullOrEmpty(ResourceClassName) ? ResourceName : ResourceClassName;
             SplitName(resourceAccessName, out namespaceName, out className);
 
-            string docCommentStart;
             Lang language;
             switch (Language.ToUpperInvariant())
             {
                 case "C#":
                     language = Lang.CSharp;
-                    docCommentStart = "///";
                     break;
 
                 case "VB":
                     language = Lang.VisualBasic;
-                    docCommentStart = "'''";
                     break;
 
                 default:
@@ -143,20 +126,11 @@ namespace Microsoft.DotNet.Arcade.Sdk
                     return false;
                 }
 
-                if (value.Length > maxDocCommentLength)
-                {
-                    value = value.Substring(0, maxDocCommentLength) + " ...";
-                }
+                string docCommentString = value.Length > maxDocCommentLength ? value.Substring(0, maxDocCommentLength) + " ..." : value;
 
-                string escapedTrimmedValue = new XElement("summary", value).ToString();
+                RenderDocComment(language, memberIndent, strings, docCommentString);
 
-                foreach (var line in escapedTrimmedValue.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None))
-                {
-                    strings.Append($"{memberIndent}{docCommentStart} ");
-                    strings.AppendLine(line);
-                }
-
-                string identifier = IsLetterChar(CharUnicodeInfo.GetUnicodeCategory(name[0])) ? name : "_" + name;
+                string identifier = GetIdentifierFromResourceName(name);
 
                 string defaultValue = IncludeDefaultValues ? ", " + CreateStringLiteral(value, language) : string.Empty;
 
@@ -165,28 +139,43 @@ namespace Microsoft.DotNet.Arcade.Sdk
                     case Lang.CSharp:
                         if (AsConstants)
                         {
-                            strings.AppendLine($"{memberIndent}internal const string {name} = nameof({name});");
+                            strings.AppendLine($"{memberIndent}internal const string @{identifier} = \"{name}\");");
                         }
                         else
                         {
-                            strings.AppendLine($"{memberIndent}internal static string {identifier} => GetResourceString(\"{name}\"{defaultValue});");
+                            strings.AppendLine($"{memberIndent}internal static string @{identifier} => GetResourceString(\"{name}\"{defaultValue});");
+                        }
+
+                        if (EmitFormatMethods)
+                        {
+                            var resourceString = new ResourceString(name, value);
+
+                            if (resourceString.HasArguments)
+                            {
+                                RenderDocComment(language, memberIndent, strings, docCommentString);
+                                RenderFormatMethod(memberIndent, language, strings, resourceString);
+                            }
                         }
                         break;
 
                     case Lang.VisualBasic:
                         if (AsConstants)
                         {
-                            strings.AppendLine($"{memberIndent}Friend Const {name} As String = \"{name}\"");
+                            strings.AppendLine($"{memberIndent}Friend Const [{identifier}] As String = \"{name}\"");
                         }
                         else
                         {
-                            strings.AppendLine($"{memberIndent}Friend Shared ReadOnly Property {identifier} As String");
+                            strings.AppendLine($"{memberIndent}Friend Shared ReadOnly Property [{identifier}] As String");
                             strings.AppendLine($"{memberIndent}  Get");
                             strings.AppendLine($"{memberIndent}    Return GetResourceString(\"{name}\"{defaultValue})");
                             strings.AppendLine($"{memberIndent}  End Get");
                             strings.AppendLine($"{memberIndent}End Property");
                         }
-                        
+
+                        if (EmitFormatMethods)
+                        {
+                            throw new NotImplementedException();
+                        }
                         break;
 
                     default:
@@ -205,20 +194,40 @@ namespace Microsoft.DotNet.Arcade.Sdk
                 {
                     case Lang.CSharp:
                         getStringMethod = $@"{memberIndent}internal static global::System.Globalization.CultureInfo Culture {{ get; set; }}
-
+#if !NET20
 {memberIndent}[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+#endif
 {memberIndent}internal static string GetResourceString(string resourceKey, string defaultValue = null) =>  ResourceManager.GetString(resourceKey, Culture);";
+                        if (EmitFormatMethods)
+                        {
+                            getStringMethod += $@"
+
+{memberIndent}private static string GetResourceString(string resourceKey, string[] formatterNames)
+{memberIndent}{{
+{memberIndent}   var value = GetResourceString(resourceKey);
+{memberIndent}   if (formatterNames != null)
+{memberIndent}   {{
+{memberIndent}       for (var i = 0; i < formatterNames.Length; i++)
+{memberIndent}       {{
+{memberIndent}           value = value.Replace(""{{"" + formatterNames[i] + ""}}"", ""{{"" + i + ""}}"");
+{memberIndent}       }}
+{memberIndent}   }}
+{memberIndent}   return value;
+{memberIndent}}}
+";
+                        }
                         break;
 
                     case Lang.VisualBasic:
                         getStringMethod = $@"{memberIndent}Friend Shared Property Culture As Global.System.Globalization.CultureInfo
-
 {memberIndent}<Global.System.Runtime.CompilerServices.MethodImpl(Global.System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)>
 {memberIndent}Friend Shared Function GetResourceString(ByVal resourceKey As String, Optional ByVal defaultValue As String = Nothing) As String
-{memberIndent}  Get
 {memberIndent}    Return ResourceManager.GetString(resourceKey, Culture)
-{memberIndent}  End Get
 {memberIndent}End Function";
+                        if (EmitFormatMethods)
+                        {
+                            throw new NotImplementedException();
+                        }
                         break;
 
                     default:
@@ -300,8 +309,8 @@ End Namespace";
                 }
             }
 
-            // The ResourceManager property being initialized lazily is an important optimization that lets .NETNative 
-            // completely remove the ResourceManager class if the disk space saving optimization to strip resources 
+            // The ResourceManager property being initialized lazily is an important optimization that lets .NETNative
+            // completely remove the ResourceManager class if the disk space saving optimization to strip resources
             // (/DisableExceptionMessages) is turned on in the compiler.
             string result;
             switch (language)
@@ -357,6 +366,74 @@ Imports System.Reflection
             return true;
         }
 
+        internal static string GetIdentifierFromResourceName(string name)
+        {
+            if (name.All(IsIdentifierPartCharacter))
+            {
+                return IsIdentifierStartCharacter(name[0]) ? name : "_" + name;
+            }
+
+            var builder = new StringBuilder(name.Length);
+
+            char f = name[0];
+            if (IsIdentifierPartCharacter(f) && !IsIdentifierStartCharacter(f))
+            {
+                builder.Append('_');
+            }
+
+            foreach (char c in name)
+            {
+                builder.Append(IsIdentifierPartCharacter(c) ? c : '_');
+            }
+
+            return builder.ToString();
+
+            static bool IsIdentifierStartCharacter(char ch)
+                => ch == '_' || IsLetterChar(CharUnicodeInfo.GetUnicodeCategory(ch));
+
+            static bool IsIdentifierPartCharacter(char ch)
+            {
+                var cat = CharUnicodeInfo.GetUnicodeCategory(ch);
+                return IsLetterChar(cat)
+                    || cat == UnicodeCategory.DecimalDigitNumber
+                    || cat == UnicodeCategory.ConnectorPunctuation
+                    || cat == UnicodeCategory.Format
+                    || cat == UnicodeCategory.NonSpacingMark
+                    || cat == UnicodeCategory.SpacingCombiningMark;
+            }
+
+            static bool IsLetterChar(UnicodeCategory cat)
+            {
+                switch (cat)
+                {
+                    case UnicodeCategory.UppercaseLetter:
+                    case UnicodeCategory.LowercaseLetter:
+                    case UnicodeCategory.TitlecaseLetter:
+                    case UnicodeCategory.ModifierLetter:
+                    case UnicodeCategory.OtherLetter:
+                    case UnicodeCategory.LetterNumber:
+                        return true;
+                }
+
+                return false;
+            }
+        }
+
+        private static void RenderDocComment(Lang language, string memberIndent, StringBuilder strings, string value)
+        {
+            string docCommentStart = language == Lang.CSharp
+                ? "///"
+                : "'''";
+
+            string escapedTrimmedValue = new XElement("summary", value).ToString();
+
+            foreach (var line in escapedTrimmedValue.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None))
+            {
+                strings.Append(memberIndent).Append(docCommentStart).Append(' ');
+                strings.AppendLine(line);
+            }
+        }
+
         private static string CreateStringLiteral(string original, Lang lang)
         {
             StringBuilder stringLiteral = new StringBuilder(original.Length + 3);
@@ -392,6 +469,78 @@ Imports System.Reflection
                 namespaceName = fullName.Substring(0, lastDot);
                 className = fullName.Substring(lastDot + 1);
             }
+        }
+
+        private static void RenderFormatMethod(string indent, Lang language, StringBuilder strings, ResourceString resourceString)
+        {
+            strings.AppendLine($"{indent}internal static string Format{resourceString.Name}({resourceString.GetMethodParameters(language)})");
+            if (resourceString.UsingNamedArgs)
+            {
+                strings.AppendLine($@"{indent}   => string.Format(Culture, GetResourceString(""{resourceString.Name}"", new [] {{ {resourceString.GetArgumentNames()} }}), {resourceString.GetArguments()});");
+            }
+            else
+            {
+                strings.AppendLine($@"{indent}   => string.Format(Culture, GetResourceString(""{resourceString.Name}""), {resourceString.GetArguments()});");
+            }
+            strings.AppendLine();
+        }
+
+        private class ResourceString
+        {
+            private static readonly Regex _namedParameterMatcher = new Regex(@"\{([a-z]\w+)\}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            private static readonly Regex _numberParameterMatcher = new Regex(@"\{(\d+)\}", RegexOptions.Compiled);
+            private readonly IReadOnlyList<string> _arguments;
+
+            public ResourceString(string name, string value)
+            {
+                Name = name;
+                Value = value;
+
+                var match = _namedParameterMatcher.Matches(value);
+                UsingNamedArgs = match.Count > 0;
+
+                if (!UsingNamedArgs)
+                {
+                    match = _numberParameterMatcher.Matches(value);
+                }
+
+                var arguments = match.Cast<Match>()
+                                     .Select(m => m.Groups[1].Value)
+                                     .Distinct();
+                if (!UsingNamedArgs)
+                {
+                    arguments = arguments.OrderBy(Convert.ToInt32);
+                }
+
+                _arguments = arguments.ToList();
+            }
+
+            public string Name { get; }
+
+            public string Value { get; }
+
+            public bool UsingNamedArgs { get; }
+
+            public bool HasArguments => _arguments.Count > 0;
+
+            public string GetArgumentNames() => string.Join(", ", _arguments.Select(a => "\"" + a + "\""));
+
+            public string GetArguments() => string.Join(", ", _arguments.Select(GetArgName));
+
+            public string GetMethodParameters(Lang language)
+            {
+                switch (language)
+                {
+                    case Lang.CSharp:
+                        return string.Join(", ", _arguments.Select(a => "object " + GetArgName(a)));
+                    case Lang.VisualBasic:
+                        return string.Join(", ", _arguments.Select(a => GetArgName(a)));
+                    default:
+                        throw new NotImplementedException();
+                }
+            }
+
+            private string GetArgName(string name) => UsingNamedArgs ? name : 'p' + name;
         }
     }
 }

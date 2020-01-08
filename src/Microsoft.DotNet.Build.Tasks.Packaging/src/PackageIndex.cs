@@ -35,7 +35,9 @@ namespace Microsoft.DotNet.Build.Tasks.Packaging
 
         public static PackageIndex Load(IEnumerable<string> packageIndexFiles)
         {
-            string indexKey = String.Join("|", packageIndexFiles);
+            string indexKey = String.Join("|",
+                packageIndexFiles.Select(packageIndexFile => new FileInfo(packageIndexFile))
+                                 .Select(packageIndexFileInfo => $"{packageIndexFileInfo.FullName}:{packageIndexFileInfo.Length}:{packageIndexFileInfo.LastWriteTimeUtc.Ticks}"));
 
             PackageIndex result = null;
 
@@ -619,7 +621,7 @@ namespace Microsoft.DotNet.Build.Tasks.Packaging
                     return true;
                 }
 
-                // inbox if explict entry is greater than or equal to current
+                // inbox if explicit entry is greater than or equal to current
                 return permitRevisions ? 
                     VersionUtility.IsCompatibleApiVersion(assemblyVersionInbox, assemblyVersion) : 
                     assemblyVersionInbox >= assemblyVersion;

@@ -1,12 +1,11 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Net.Http;
-using System.Net.Http.Headers;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Rest;
+using Azure;
+using Azure.Core;
 using Microsoft.DotNet.Helix.Client.Models;
 
 namespace Microsoft.DotNet.Helix.Client
@@ -14,17 +13,17 @@ namespace Microsoft.DotNet.Helix.Client
     public partial interface IStorage
     {
         Task<IImmutableList<ContainerInformation>> ListAsync(
-            bool getSasTokens = default,
+            bool? getSasTokens = default,
             CancellationToken cancellationToken = default
         );
 
         Task<ContainerInformation> NewAsync(
-            ContainerCreationRequest newContainer,
+            ContainerCreationRequest body,
             CancellationToken cancellationToken = default
         );
 
         Task<ContainerInformation> ExtendExpirationAsync(
-            ContainerExtensionRequest extensionRequest,
+            ContainerExtensionRequest body,
             CancellationToken cancellationToken = default
         );
 
@@ -44,254 +43,232 @@ namespace Microsoft.DotNet.Helix.Client
         partial void HandleFailedListRequest(RestApiException ex);
 
         public async Task<IImmutableList<ContainerInformation>> ListAsync(
-            bool getSasTokens = default,
+            bool? getSasTokens = default,
             CancellationToken cancellationToken = default
         )
         {
-            using (var _res = await ListInternalAsync(
-                getSasTokens,
-                cancellationToken
-            ).ConfigureAwait(false))
+
+            var _baseUri = Client.Options.BaseUri;
+            var _url = new RequestUriBuilder();
+            _url.Reset(_baseUri);
+            _url.AppendPath(
+                "/api/2019-06-17/storage",
+                false);
+
+            if (getSasTokens != default(bool?))
             {
-                return _res.Body;
+                _url.AppendQuery("getSasTokens", Client.Serialize(getSasTokens));
+            }
+
+
+            using (var _req = Client.Pipeline.CreateRequest())
+            {
+                _req.Uri = _url;
+                _req.Method = RequestMethod.Get;
+
+                using (var _res = await Client.SendAsync(_req, cancellationToken).ConfigureAwait(false))
+                {
+                    if (_res.Status < 200 || _res.Status >= 300)
+                    {
+                        await OnListFailed(_req, _res).ConfigureAwait(false);
+                    }
+
+                    if (_res.ContentStream == null)
+                    {
+                        await OnListFailed(_req, _res).ConfigureAwait(false);
+                    }
+
+                    using (var _reader = new StreamReader(_res.ContentStream))
+                    {
+                        var _content = await _reader.ReadToEndAsync().ConfigureAwait(false);
+                        var _body = Client.Deserialize<IImmutableList<ContainerInformation>>(_content);
+                        return _body;
+                    }
+                }
             }
         }
 
-        internal async Task<HttpOperationResponse<IImmutableList<ContainerInformation>>> ListInternalAsync(
-            bool getSasTokens = default,
-            CancellationToken cancellationToken = default
-        )
+        internal async Task OnListFailed(Request req, Response res)
         {
-
-            var _path = "/api/2018-03-14/storage";
-
-            var _query = new QueryBuilder();
-            if (getSasTokens != default)
+            string content = null;
+            if (res.ContentStream != null)
             {
-                _query.Add("getSasTokens", Client.Serialize(getSasTokens));
-            }
-
-            var _uriBuilder = new UriBuilder(Client.BaseUri);
-            _uriBuilder.Path = _uriBuilder.Path.TrimEnd('/') + _path;
-            _uriBuilder.Query = _query.ToString();
-            var _url = _uriBuilder.Uri;
-
-            HttpRequestMessage _req = null;
-            HttpResponseMessage _res = null;
-            try
-            {
-                _req = new HttpRequestMessage(HttpMethod.Get, _url);
-
-                if (Client.Credentials != null)
+                using (var reader = new StreamReader(res.ContentStream))
                 {
-                    await Client.Credentials.ProcessHttpRequestAsync(_req, cancellationToken).ConfigureAwait(false);
+                    content = await reader.ReadToEndAsync().ConfigureAwait(false);
                 }
+            }
 
-                _res = await Client.SendAsync(_req, cancellationToken).ConfigureAwait(false);
-                string _responseContent;
-                if (!_res.IsSuccessStatusCode)
-                {
-                    _responseContent = await _res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    var ex = new RestApiException(
-                        new HttpRequestMessageWrapper(_req, null),
-                        new HttpResponseMessageWrapper(_res, _responseContent));
-                    HandleFailedListRequest(ex);
-                    HandleFailedRequest(ex);
-                    Client.OnFailedRequest(ex);
-                    throw ex;
-                }
-                _responseContent = await _res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                return new HttpOperationResponse<IImmutableList<ContainerInformation>>
-                {
-                    Request = _req,
-                    Response = _res,
-                    Body = Client.Deserialize<IImmutableList<ContainerInformation>>(_responseContent),
-                };
-            }
-            catch (Exception)
-            {
-                _req?.Dispose();
-                _res?.Dispose();
-                throw;
-            }
+            var ex = new RestApiException(
+                req,
+                res,
+                content);
+            HandleFailedListRequest(ex);
+            HandleFailedRequest(ex);
+            Client.OnFailedRequest(ex);
+            throw ex;
         }
 
         partial void HandleFailedNewRequest(RestApiException ex);
 
         public async Task<ContainerInformation> NewAsync(
-            ContainerCreationRequest newContainer,
+            ContainerCreationRequest body,
             CancellationToken cancellationToken = default
         )
         {
-            using (var _res = await NewInternalAsync(
-                newContainer,
-                cancellationToken
-            ).ConfigureAwait(false))
+            if (body == default(ContainerCreationRequest))
             {
-                return _res.Body;
+                throw new ArgumentNullException(nameof(body));
+            }
+
+            if (!body.IsValid)
+            {
+                throw new ArgumentException("The parameter is not valid", nameof(body));
+            }
+
+
+            var _baseUri = Client.Options.BaseUri;
+            var _url = new RequestUriBuilder();
+            _url.Reset(_baseUri);
+            _url.AppendPath(
+                "/api/2019-06-17/storage",
+                false);
+
+
+
+            using (var _req = Client.Pipeline.CreateRequest())
+            {
+                _req.Uri = _url;
+                _req.Method = RequestMethod.Post;
+
+                if (body != default(ContainerCreationRequest))
+                {
+                    _req.Content = RequestContent.Create(Encoding.UTF8.GetBytes(Client.Serialize(body)));
+                    _req.Headers.Add("Content-Type", "application/json; charset=utf-8");
+                }
+
+                using (var _res = await Client.SendAsync(_req, cancellationToken).ConfigureAwait(false))
+                {
+                    if (_res.Status < 200 || _res.Status >= 300)
+                    {
+                        await OnNewFailed(_req, _res).ConfigureAwait(false);
+                    }
+
+                    if (_res.ContentStream == null)
+                    {
+                        await OnNewFailed(_req, _res).ConfigureAwait(false);
+                    }
+
+                    using (var _reader = new StreamReader(_res.ContentStream))
+                    {
+                        var _content = await _reader.ReadToEndAsync().ConfigureAwait(false);
+                        var _body = Client.Deserialize<ContainerInformation>(_content);
+                        return _body;
+                    }
+                }
             }
         }
 
-        internal async Task<HttpOperationResponse<ContainerInformation>> NewInternalAsync(
-            ContainerCreationRequest newContainer,
-            CancellationToken cancellationToken = default
-        )
+        internal async Task OnNewFailed(Request req, Response res)
         {
-            if (newContainer == default)
+            string content = null;
+            if (res.ContentStream != null)
             {
-                throw new ArgumentNullException(nameof(newContainer));
+                using (var reader = new StreamReader(res.ContentStream))
+                {
+                    content = await reader.ReadToEndAsync().ConfigureAwait(false);
+                }
             }
 
-
-            var _path = "/api/2018-03-14/storage";
-
-            var _query = new QueryBuilder();
-
-            var _uriBuilder = new UriBuilder(Client.BaseUri);
-            _uriBuilder.Path = _uriBuilder.Path.TrimEnd('/') + _path;
-            _uriBuilder.Query = _query.ToString();
-            var _url = _uriBuilder.Uri;
-
-            HttpRequestMessage _req = null;
-            HttpResponseMessage _res = null;
-            try
-            {
-                _req = new HttpRequestMessage(HttpMethod.Post, _url);
-
-                string _requestContent = null;
-                if (newContainer != default)
-                {
-                    _requestContent = Client.Serialize(newContainer);
-                    _req.Content = new StringContent(_requestContent, Encoding.UTF8)
-                    {
-                        Headers =
-                        {
-                            ContentType = MediaTypeHeaderValue.Parse("application/json; charset=utf-8"),
-                        },
-                    };
-                }
-
-                if (Client.Credentials != null)
-                {
-                    await Client.Credentials.ProcessHttpRequestAsync(_req, cancellationToken).ConfigureAwait(false);
-                }
-
-                _res = await Client.SendAsync(_req, cancellationToken).ConfigureAwait(false);
-                string _responseContent;
-                if (!_res.IsSuccessStatusCode)
-                {
-                    _responseContent = await _res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    var ex = new RestApiException(
-                        new HttpRequestMessageWrapper(_req, _requestContent),
-                        new HttpResponseMessageWrapper(_res, _responseContent));
-                    HandleFailedNewRequest(ex);
-                    HandleFailedRequest(ex);
-                    Client.OnFailedRequest(ex);
-                    throw ex;
-                }
-                _responseContent = await _res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                return new HttpOperationResponse<ContainerInformation>
-                {
-                    Request = _req,
-                    Response = _res,
-                    Body = Client.Deserialize<ContainerInformation>(_responseContent),
-                };
-            }
-            catch (Exception)
-            {
-                _req?.Dispose();
-                _res?.Dispose();
-                throw;
-            }
+            var ex = new RestApiException(
+                req,
+                res,
+                content);
+            HandleFailedNewRequest(ex);
+            HandleFailedRequest(ex);
+            Client.OnFailedRequest(ex);
+            throw ex;
         }
 
         partial void HandleFailedExtendExpirationRequest(RestApiException ex);
 
         public async Task<ContainerInformation> ExtendExpirationAsync(
-            ContainerExtensionRequest extensionRequest,
+            ContainerExtensionRequest body,
             CancellationToken cancellationToken = default
         )
         {
-            using (var _res = await ExtendExpirationInternalAsync(
-                extensionRequest,
-                cancellationToken
-            ).ConfigureAwait(false))
+            if (body == default(ContainerExtensionRequest))
             {
-                return _res.Body;
+                throw new ArgumentNullException(nameof(body));
+            }
+
+            if (!body.IsValid)
+            {
+                throw new ArgumentException("The parameter is not valid", nameof(body));
+            }
+
+
+            var _baseUri = Client.Options.BaseUri;
+            var _url = new RequestUriBuilder();
+            _url.Reset(_baseUri);
+            _url.AppendPath(
+                "/api/2019-06-17/storage/renew",
+                false);
+
+
+
+            using (var _req = Client.Pipeline.CreateRequest())
+            {
+                _req.Uri = _url;
+                _req.Method = RequestMethod.Post;
+
+                if (body != default(ContainerExtensionRequest))
+                {
+                    _req.Content = RequestContent.Create(Encoding.UTF8.GetBytes(Client.Serialize(body)));
+                    _req.Headers.Add("Content-Type", "application/json; charset=utf-8");
+                }
+
+                using (var _res = await Client.SendAsync(_req, cancellationToken).ConfigureAwait(false))
+                {
+                    if (_res.Status < 200 || _res.Status >= 300)
+                    {
+                        await OnExtendExpirationFailed(_req, _res).ConfigureAwait(false);
+                    }
+
+                    if (_res.ContentStream == null)
+                    {
+                        await OnExtendExpirationFailed(_req, _res).ConfigureAwait(false);
+                    }
+
+                    using (var _reader = new StreamReader(_res.ContentStream))
+                    {
+                        var _content = await _reader.ReadToEndAsync().ConfigureAwait(false);
+                        var _body = Client.Deserialize<ContainerInformation>(_content);
+                        return _body;
+                    }
+                }
             }
         }
 
-        internal async Task<HttpOperationResponse<ContainerInformation>> ExtendExpirationInternalAsync(
-            ContainerExtensionRequest extensionRequest,
-            CancellationToken cancellationToken = default
-        )
+        internal async Task OnExtendExpirationFailed(Request req, Response res)
         {
-            if (extensionRequest == default)
+            string content = null;
+            if (res.ContentStream != null)
             {
-                throw new ArgumentNullException(nameof(extensionRequest));
+                using (var reader = new StreamReader(res.ContentStream))
+                {
+                    content = await reader.ReadToEndAsync().ConfigureAwait(false);
+                }
             }
 
-
-            var _path = "/api/2018-03-14/storage/renew";
-
-            var _query = new QueryBuilder();
-
-            var _uriBuilder = new UriBuilder(Client.BaseUri);
-            _uriBuilder.Path = _uriBuilder.Path.TrimEnd('/') + _path;
-            _uriBuilder.Query = _query.ToString();
-            var _url = _uriBuilder.Uri;
-
-            HttpRequestMessage _req = null;
-            HttpResponseMessage _res = null;
-            try
-            {
-                _req = new HttpRequestMessage(HttpMethod.Post, _url);
-
-                string _requestContent = null;
-                if (extensionRequest != default)
-                {
-                    _requestContent = Client.Serialize(extensionRequest);
-                    _req.Content = new StringContent(_requestContent, Encoding.UTF8)
-                    {
-                        Headers =
-                        {
-                            ContentType = MediaTypeHeaderValue.Parse("application/json; charset=utf-8"),
-                        },
-                    };
-                }
-
-                if (Client.Credentials != null)
-                {
-                    await Client.Credentials.ProcessHttpRequestAsync(_req, cancellationToken).ConfigureAwait(false);
-                }
-
-                _res = await Client.SendAsync(_req, cancellationToken).ConfigureAwait(false);
-                string _responseContent;
-                if (!_res.IsSuccessStatusCode)
-                {
-                    _responseContent = await _res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    var ex = new RestApiException(
-                        new HttpRequestMessageWrapper(_req, _requestContent),
-                        new HttpResponseMessageWrapper(_res, _responseContent));
-                    HandleFailedExtendExpirationRequest(ex);
-                    HandleFailedRequest(ex);
-                    Client.OnFailedRequest(ex);
-                    throw ex;
-                }
-                _responseContent = await _res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                return new HttpOperationResponse<ContainerInformation>
-                {
-                    Request = _req,
-                    Response = _res,
-                    Body = Client.Deserialize<ContainerInformation>(_responseContent),
-                };
-            }
-            catch (Exception)
-            {
-                _req?.Dispose();
-                _res?.Dispose();
-                throw;
-            }
+            var ex = new RestApiException(
+                req,
+                res,
+                content);
+            HandleFailedExtendExpirationRequest(ex);
+            HandleFailedRequest(ex);
+            Client.OnFailedRequest(ex);
+            throw ex;
         }
     }
 }

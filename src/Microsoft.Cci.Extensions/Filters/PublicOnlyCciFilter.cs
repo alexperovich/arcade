@@ -4,6 +4,7 @@
 
 using System.Linq;
 using Microsoft.Cci.Extensions;
+using Microsoft.Cci.Extensions.CSharp;
 
 namespace Microsoft.Cci.Filters
 {
@@ -11,7 +12,13 @@ namespace Microsoft.Cci.Filters
     {
         public PublicOnlyCciFilter(bool excludeAttributes = true)
         {
-            this.ExcludeAttributes = excludeAttributes;
+            ExcludeAttributes = excludeAttributes;
+        }
+
+        public PublicOnlyCciFilter(bool excludeAttributes, bool includeForwardedTypes)
+        {
+            ExcludeAttributes = excludeAttributes;
+            IncludeForwardedTypes = includeForwardedTypes;
         }
 
         public bool IncludeForwardedTypes { get; set; }
@@ -53,7 +60,18 @@ namespace Microsoft.Cci.Filters
             }
 
             if (!member.IsVisibleOutsideAssembly())
+            {
+                // If a type is public, abstract and has a public constructor,
+                // then it must expose all abstract members. 
+                if (member.ContainingTypeDefinition.IsAbstract &&
+                    member.IsAbstract() &&
+                    member.ContainingTypeDefinition.IsConstructorVisible()
+                    )
+                {
+                    return true;
+                }
                 return false;
+            }
 
             return true;
         }

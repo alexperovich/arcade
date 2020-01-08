@@ -1,17 +1,20 @@
-<!-- Licensed to the .NET Foundation under one or more agreements. The .NET Foundation licenses this file to you under the MIT license. See the LICENSE file in the project root for more information. -->
+﻿<!-- Licensed to the .NET Foundation under one or more agreements. The .NET Foundation licenses this file to you under the MIT license. See the LICENSE file in the project root for more information. -->
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="$(MSBuildThisFileDirectory)/../Microsoft.SignCheck/ResxWorkaround.props" />
   <PropertyGroup>
-    <TargetFramework>net461</TargetFramework>
+    <TargetFramework>net472</TargetFramework>
     <OutputType>EXE</OutputType>
     <Platforms>x86</Platforms>
     <IsTool>True</IsTool>
     <Configurations>Release;Debug</Configurations>
     <SignAssembly>false</SignAssembly>
     <IsPackable>true</IsPackable>
+    <!-- Build Tasks should not include any dependencies -->
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <Description>Build artifact signing validation tool</Description>
     <PackageTags>Arcade Signing Validation Tool</PackageTags>
     <RootNamespace>SignCheck</RootNamespace>
+    <ExcludeFromSourceBuild>true</ExcludeFromSourceBuild>
   </PropertyGroup>
 
   <PropertyGroup Label="Nuget Package Settings">

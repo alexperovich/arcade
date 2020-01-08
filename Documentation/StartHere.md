@@ -23,7 +23,7 @@ areas:
   internal as well as public changes.
 - **Improving our inter-repo dependency version management (Darc)** - Improve
   the rate at which dependencies are updated in repos, improve content
-  tracability, etc.
+  traceability, etc.
 
 ## Does my repository need to be involved?
 
@@ -54,12 +54,13 @@ some highlights
 ### Concepts and Goals
 
 - [Arcade overview](Overview.md)
+- [Arcade communications](./Policy/ArcadeCommunications.md)
 - [How dependency flow works in .NET Core
   3](BranchesChannelsAndSubscriptions.md)
-- [Roadmap](CorePackages/PackagesRoadmap.md)
+- [Guidance for defaults](./Policy/DefaultsGuidance.md)
 - [Versioning rules](CorePackages/Versioning.md)
 - [Dependencies Flow Plan](DependenciesFlowPlan.md): Flowing dependencies with Darc, Maestro and BAR.
-- [How to Create and Arcade Package](HowToCreatePackages.md)
+- [How to Create an Arcade Package](HowToCreatePackages.md)
 - [.NET Core Infrastructure Ecosystem Overview](InfrastructureEcosystemOverview.md)
 - [Toolset Publish/Consume Contract](PublishConsumeContract.md)
 - [Servicing](Servicing.md)
@@ -92,9 +93,10 @@ some highlights
   - Mission Control
 
 #### Testing projects
-  - Helix: [SDK](../src/Microsoft.DotNet.Helix/Sdk/Readme.md), [JobSender](../src/Microsoft.DotNet.Helix/Sdk/Readme.md)
+  - Helix: [SDK](../src/Microsoft.DotNet.Helix/Sdk/Readme.md), [JobSender](../src/Microsoft.DotNet.Helix/JobSender/Readme.md)
   - Azure Agent pools and queues
   - Docker support
+  - [Dump file retrieval](Dumps/Dumps.md)
 
 #### Deploying projects
   - [Packaging](CorePackages/Packaging.md)

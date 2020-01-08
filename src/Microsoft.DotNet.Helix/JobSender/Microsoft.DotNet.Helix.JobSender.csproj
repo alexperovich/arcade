@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <VersionPrefix>2.0.0</VersionPrefix>
     <TargetFramework>netstandard2.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <RootNamespace>Microsoft.DotNet.Helix.Client</RootNamespace>
     <Description>This package provides a simple API for constructing and sending jobs to the Helix Api</Description>
+    <ExcludeFromSourceBuild>true</ExcludeFromSourceBuild>
   </PropertyGroup>
 
   <ItemGroup>

@@ -25,9 +25,10 @@ namespace Microsoft.DotNet.GitSync
     internal class Program
     {
         private const string TableName = "CommitHistory";
-        private const string RepoTableName = "MirrorRepos";
+        private const string RepoTableName = "MirrorBranchRepos";
         private static CloudTable s_table;
-        private static Dictionary<string, List<string>> s_repos { get; set; } = new Dictionary<string, List<string>>();
+        private static Dictionary<(string, string), List<string>> s_repos { get; set; } = new Dictionary<(string, string), List<string>>();
+        private static Dictionary<string, HashSet<string>> s_branchRepoPairs = new Dictionary<string, HashSet<string>>();
         private ConfigFile ConfigFile { get; }
         private static Lazy<GitHubClient> _lazyClient;
         private static EmailManager s_emailManager;
@@ -121,10 +122,16 @@ namespace Microsoft.DotNet.GitSync
 
             foreach (string prBranch in config.Branches)
             {
+                if (!s_branchRepoPairs.ContainsKey(prBranch))
+                    throw new ArgumentException($"None of the repos mirror {prBranch} branch.", nameof(prBranch));
+
                 UpdateRepository(config.Repos, prBranch);
 
                 foreach (RepositoryInfo repo in config.Repos)
                 {
+                    if (!s_branchRepoPairs[prBranch].Contains(repo.Name))
+                        continue;
+
                     if (repo.LastSynchronizedCommits != null)
                         SanityCheck(repo, prBranch);
 
@@ -149,7 +156,7 @@ namespace Microsoft.DotNet.GitSync
                         else
                         {
                             UpdateEntities(_listCommits, "Commits are already Mirrored");
-                            s_logger.Info($"Commit Entries modififed to show mirrored in the azure table");
+                            s_logger.Info($"Commit Entries modified to show mirrored in the azure table");
                         }
                     }
 
@@ -184,9 +191,7 @@ namespace Microsoft.DotNet.GitSync
                     foreach (var change in newChanges.changes[sourceRepository.Name])
                     {
                         var commit = repo.Lookup<Commit>(change);
-                        if (!IsMirrorCommit(commit.Message, targetRepo.Configuration.MirrorSignatureUser)
-                            && commit.Parents.Count() == 1
-                            )
+                        if (!IsMirrorCommit(commit.Message, targetRepo.Configuration.MirrorSignatureUser))
                         {
                             s_logger.Info($"Applying {change}");
                             var patch = FormatPatch(sourceRepository, change);
@@ -213,6 +218,7 @@ namespace Microsoft.DotNet.GitSync
         }
 
         private static bool IsMirrorCommit(string message, string author) => message.Contains($"Signed-off-by: {author} <{author}@microsoft.com>");
+
         private static string FormatPatch(RepositoryInfo sourceRepository, string sha)
         {
             var result = Runner.RunCommand("git",
@@ -239,7 +245,7 @@ namespace Microsoft.DotNet.GitSync
         {
             var sourceSlashIgnore = 1 + sourceRepository.SharedPath.Count(c => c == '\\') + 1;
             var result = Runner.RunCommand("git",
-                $"-c \"user.name={s_mirrorSignatureUserName}\" -C \"{targetRepository.Path}\" am --signoff -p{sourceSlashIgnore} --directory=\"{targetRepository.SharedPath.Replace('\\', '/')}\"",
+                $"-c \"user.name={s_mirrorSignatureUserName}\" -C \"{targetRepository.Path}\" am --signoff --reject --3way -p{sourceSlashIgnore} --directory=\"{targetRepository.SharedPath.Replace('\\', '/')}\"",
                 s_logger, patch);
             s_logger.Debug(result.Output);
             if (result.ExitCode != 0)
@@ -281,7 +287,7 @@ namespace Microsoft.DotNet.GitSync
             var additionalAssignees = await Task.WhenAll(commits.Select(c => GetAuthorAsync(targetRepo, c.Sha)).Distinct());
             try
             {
-                var update = new PullRequestUpdate() { Body = pr.Body + "\n\n cc " + string.Join(" ", additionalAssignees.Select(a => "@" + a)) };
+                var update = new PullRequestUpdate() { Body = pr.Body + "\n\n cc " + string.Join(" ", additionalAssignees.Select(a => "@" + a).Distinct()) };
                 await Client.PullRequest.Update(targetRepo.UpstreamOwner, targetRepo.Name, pr.Number, update);
             }
             catch (Exception)
@@ -293,7 +299,7 @@ namespace Microsoft.DotNet.GitSync
             };
             s_logger.Info($"Pull request #{pr.Number} created for {prBranch}");
             UpdateEntities(_listCommits, pr.Url.ToString());
-            s_logger.Info($"Commit Entries modififed to show mirrored in the azure table");
+            s_logger.Info($"Commit Entries modified to show mirrored in the azure table");
             ConfigFile.Save(targetRepo.Configuration);
         }
 
@@ -375,15 +381,18 @@ namespace Microsoft.DotNet.GitSync
         {
             foreach (var repo in repos)
             {
-                s_logger.Debug($"Updating {repo}\\{branch} to latest version.");
-                using (var repository = new Repository(repo.Path))
+                if (s_branchRepoPairs[branch].Contains(repo.Name) || s_repos.ContainsKey((repo.Name, branch)))
                 {
-                    s_logger.Info($"Fetching new changes for {repo}\\{branch} from upstream");
-                    Commands.Fetch(repository, "upstream", new[] { $"{branch}:{branch}" }, new FetchOptions(), $"fetch {branch}");
-                    s_logger.Info($"Checking out upstream  {repo}\\{branch}");
-                    Commands.Checkout(repository, $"upstream/{branch}");
-                    s_logger.Info($"Hard Reset to Head");
-                    repository.Reset(ResetMode.Hard, "HEAD");
+                    s_logger.Debug($"Updating {repo}\\{branch} to latest version.");
+                    using (var repository = new Repository(repo.Path))
+                    {
+                        s_logger.Info($"Fetching new changes for {repo}\\{branch} from upstream");
+                        Commands.Fetch(repository, "upstream", new[] { $"{branch}:{branch}" }, new FetchOptions(), $"fetch {branch}");
+                        s_logger.Info($"Checking out upstream  {repo}\\{branch}");
+                        Commands.Checkout(repository, $"upstream/{branch}");
+                        s_logger.Info($"Hard Reset to Head");
+                        repository.Reset(ResetMode.Hard, "HEAD");
+                    }
                 }
             }
         }
@@ -545,7 +554,23 @@ namespace Microsoft.DotNet.GitSync
             var repos = RepoTable.ExecuteQuery(getAllMirrorPairs);
             foreach (var item in repos)
             {
-                s_repos.Add(item.PartitionKey, item["ReposToMirrorInto"].StringValue.Split(';').ToList());
+                string branchName = item["Branch"].StringValue;
+                string[] targetRepos = item["ReposToMirrorInto"].StringValue.Split(';');
+
+                s_repos.Add((item.PartitionKey, branchName), targetRepos.ToList());
+
+                if (s_branchRepoPairs.ContainsKey(branchName))
+                {
+                    foreach (var repoName in targetRepos)
+                    {
+                        s_branchRepoPairs[branchName].Add(repoName);
+                    }
+                }
+                else
+                {
+                    s_branchRepoPairs.Add(branchName, targetRepos.ToHashSet());
+                }
+
                 s_logger.Info($"The commits in  {item.PartitionKey} repo will be mirrored into {item["ReposToMirrorInto"].StringValue} Repos");
             }
 
@@ -616,7 +641,7 @@ namespace Microsoft.DotNet.GitSync
                     {
                         if (changedFile.Contains(sharedDirectory))
                         {
-                            foreach (string targetRepo in s_repos[repository.Name])
+                            foreach (string targetRepo in s_repos[(repository.Name, branch)])
                             {
                                 RetrieveOrInsert(repository.Name, branch, commit.Sha, targetRepo);
                             }
