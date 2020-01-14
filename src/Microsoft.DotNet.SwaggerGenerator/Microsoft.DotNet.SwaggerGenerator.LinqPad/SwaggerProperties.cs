@@ -6,18 +6,17 @@ namespace Microsoft.DotNet.SwaggerGenerator.LinqPad
     public class SwaggerProperties
     {
         private IConnectionInfo _cxInfo;
-        private XElement _driverData;
+        private XElement DriverData => _cxInfo.DriverData;
 
         public SwaggerProperties(IConnectionInfo info)
         {
             _cxInfo = info;
-            _driverData = info.DriverData;
         }
 
         public string Uri
         {
-            get => (string) _driverData.Element("Uri") ?? "";
-            set => _driverData.SetElementValue("Uri", value);
+            get => (string) DriverData.Element("Uri") ?? "";
+            set => DriverData.SetElementValue("Uri", value);
         }
     }
 }

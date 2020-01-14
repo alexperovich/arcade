@@ -1,20 +1,37 @@
 <Project>
-  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk.WindowsDesktop" />
 
   <PropertyGroup>
-    <TargetFramework>net462</TargetFramework>
+    <TargetFrameworks>netcoreapp3.0;net461</TargetFrameworks>
+    <UseWpf>true</UseWpf>
     <ExcludeFromSourceBuild>true</ExcludeFromSourceBuild>
     <PreserveCompilationContext>true</PreserveCompilationContext>
+    <EmbedUntrackedSources>false</EmbedUntrackedSources>
+    <IsPackable>true</IsPackable>
+    <PackageTags>linqpaddriver</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netcoreapp3.0'">
+    <DefineConstants>NETCORE</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="LINQPad" Version="5.26.1" ExcludeAssets="runtime" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="$(MicrosoftCodeAnalysisCSharpVersion)" />
+    <PackageReference Include="Azure.Core" Version="1.0.1" />
+    <PackageReference Include="LINQPad.Reference" Version="1.1.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="3.4.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="2.1.1" />
-    <PackageReference Include="Microsoft.Rest.ClientRuntime" Version="$(MicrosoftRestClientRuntimeVersion)" />
     <PackageReference Include="Newtonsoft.Json" Version="$(NewtonsoftJsonVersion)" />
     <PackageReference Include="System.Collections.Immutable" Version="$(SystemCollectionsImmutableVersion)" />
     <PackageReference Include="System.Text.Encodings.Web" Version="$(SystemTextEncodingsWebVersion)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net46'">
+    <Reference Include="System.Xaml">
+      <RequiredTargetFramework>4.0</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,49 +39,56 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="System.Windows.Forms" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="header.xml">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <None Update="ConnectionDialog.xaml">
+      <Generator>MSBuild:Compile</Generator>
     </None>
   </ItemGroup>
 
-  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+  <ItemGroup>
+    <Page Update="ConnectionDialog.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+  </ItemGroup>
 
-  <Target Name="GetPackOutputs" DependsOnTargets="Publish">
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk.WindowsDesktop" />
+
+  <!-- <Target Name="GetPackOutputs" DependsOnTargets="Publish">
     <ConvertToAbsolutePath Paths="$(PackageOutputPath)">
       <Output TaskParameter="AbsolutePaths" PropertyName="PackageOutputAbsolutePath" />
     </ConvertToAbsolutePath>
     <ItemGroup>
       <PackInput Include="$(PublishDir)\**\*" />
-      <PackOutput Include="$(PackageOutputAbsolutePath)\$(MSBuildProjectName).lpx" />
+      <PackOutput Include="$(PackageOutputAbsolutePath)\$(MSBuildProjectName).lpx" Condition="'$(TargetFramework)' == 'net461'" />
+      <PackOutput Include="$(PackageOutputAbsolutePath)\$(MSBuildProjectName).lpx6" Condition="'$(TargetFramework)' == 'netcoreapp3.0'" />
     </ItemGroup>
-  </Target>
+  </Target> -->
 
-  <Target Name="ExcludeUnneededRefsFromPublish" BeforeTargets="ComputeRefAssembliesToPublish">
+  <!--<Target Name="ExcludeUnneededRefsFromPublish" BeforeTargets="ComputeRefAssembliesToPublish">
     <ItemGroup>
-      <_RefAssembliesToExclude Include="@(ReferencePath)" Condition="'%(Filename)%(Extension)' == 'LINQPad.exe'"/>
-      <_RefAssembliesToExclude Include="@(ReferencePath)" Condition="'%(Filename)%(Extension)' == 'lprun.exe'"/>
+      <_RefAssembliesToExclude Include="@(ReferencePath)" Condition="'%(Filename)%(Extension)' == 'LINQPad.exe'" />
+      <_RefAssembliesToExclude Include="@(ReferencePath)" Condition="'%(Filename)%(Extension)' == 'lprun.exe'" />
     </ItemGroup>
   </Target>
 
   <Target Name="FilterPublishOutput" AfterTargets="ComputeFilesToPublish">
     <ItemGroup>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(FullPath)').Contains('runtimes\osx'))"/>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(FullPath)').Contains('runtimes\unix'))"/>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(FullPath)').EndsWith('.resources.dll'))"/>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(FullPath)').Contains('runtimes\osx'))" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(FullPath)').Contains('runtimes\unix'))" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(FullPath)').EndsWith('.resources.dll'))" />
     </ItemGroup>
-  </Target>
+  </Target>-->
 
-  <Target Name="CorePack" Inputs="@(PackInput)" Outputs="@(PackOutput)">
+  <!-- <Target Name="CorePack" Inputs="@(PackInput)" Outputs="@(PackOutput)">
     <ZipDirectory DestinationFile="@(PackOutput)" SourceDirectory="$(PublishDir)" Overwrite="true" />
     <ItemGroup>
       <FileWrites Include="@(PackOutput)" />
     </ItemGroup>
   </Target>
 
-  <Target Name="Pack" DependsOnTargets="GetPackOutputs;CorePack" AfterTargets="Build">
+  <Target Name="InnerPack" DependsOnTargets="GetPackOutputs;CorePack">
   </Target>
+
+  <Target Name="Pack" AfterTargets="Build">
+    <MSBuild Projects="@(_InnerBuildProjects)" Targets="InnerPack" BuildInParallel="$(BuildInParallel)" />
+  </Target> -->
 </Project>

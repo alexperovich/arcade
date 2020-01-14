@@ -1,18 +1,20 @@
+using LINQPad.Extensibility.DataContext;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.DotNet.SwaggerGenerator.Languages;
+using Microsoft.DotNet.SwaggerGenerator.Modeler;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi.Readers;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Threading.Tasks;
-using System.Windows.Forms;
-using LINQPad.Extensibility.DataContext;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.DotNet.SwaggerGenerator.Modeler;
-using Microsoft.Extensions.Logging.Abstractions;
-using Newtonsoft.Json;
-using Swashbuckle.AspNetCore.Swagger;
+using Newtonsoft.Json.Linq;
 
 namespace Microsoft.DotNet.SwaggerGenerator.LinqPad
 {
@@ -39,12 +41,9 @@ namespace Microsoft.DotNet.SwaggerGenerator.LinqPad
             return new SwaggerProperties(cxInfo).Uri;
         }
 
-        public override bool ShowConnectionDialog(IConnectionInfo cxInfo, bool isNewConnection)
+        public override bool ShowConnectionDialog(IConnectionInfo cxInfo, ConnectionDialogOptions dialogOptions)
         {
-            using (var dialog = new ConnectionDialog(new SwaggerProperties(cxInfo)))
-            {
-                return dialog.ShowDialog() == DialogResult.OK;
-            }
+            return new ConnectionDialog(cxInfo).ShowDialog() == true;
         }
 
         public override string Name => "Swagger";
@@ -59,6 +58,7 @@ namespace Microsoft.DotNet.SwaggerGenerator.LinqPad
             var properties = new SwaggerProperties(cxInfo);
             var uri = properties.Uri;
 
+            Templates.BasePath = Path.Combine(Path.GetDirectoryName(typeof(Templates).Assembly.Location), "../../content/");
 
             var options = new GeneratorOptions
             {
@@ -71,6 +71,7 @@ namespace Microsoft.DotNet.SwaggerGenerator.LinqPad
             var codeFactory = new ServiceClientCodeFactory();
             var code = codeFactory.GenerateCode(model, options, NullLogger.Instance);
 
+            var infoVersion = typeof(SwaggerDataContextDriver).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
             var contextClass = $@"
 using System.Collections.Generic;
 using System.IO;
@@ -80,6 +81,10 @@ using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.DotNet.SwaggerGenerator.LinqPad;
+using Azure;
+using Azure.Core;
+
+[assembly: System.Reflection.AssemblyInformationalVersion(""{infoVersion.InformationalVersion}"")]
 
 namespace {nameSpace}
 {{
@@ -91,7 +96,7 @@ namespace {nameSpace}
             set => _logger = value;
         }}
 
-        public override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        public override async ValueTask<Response> SendAsync(Request request, CancellationToken cancellationToken)
         {{
             if (_logger != null)
             {{
@@ -127,7 +132,8 @@ namespace {nameSpace}
             return new[]
             {
                 "Microsoft.DotNet.SwaggerGenerator.LinqPad.dll",
-                "Microsoft.Rest.ClientRuntime.dll",
+                "Azure.Core.dll",
+                "Microsoft.Bcl.AsyncInterfaces.dll",
                 "Newtonsoft.Json.dll",
                 "System.Collections.Immutable.dll",
                 "System.Net.Http.dll",
@@ -138,7 +144,7 @@ namespace {nameSpace}
         {
             return new[]
             {
-                "Microsoft.Rest",
+                "Azure.Core",
                 "Newtonsoft.Json",
                 "Newtonsoft.Json.Linq",
                 "System.Collections.Immutable",
@@ -214,14 +220,31 @@ namespace {nameSpace}
 
         private void BuildAssembly(List<CodeFile> code, AssemblyName name)
         {
-            var referenceDir = Path.Combine(GetDriverFolder(), "refs");
-            var references = Directory.EnumerateFiles(referenceDir, "*.dll")
-                .Concat(Directory.EnumerateFiles(GetDriverFolder(), "*.dll"));
+            string[] frameworkAssemblies =
+#if NETCORE
+                GetCoreFxReferenceAssemblies();
+#else
+            new[]
+            {
+                typeof(int).Assembly.Location,
+                typeof(Uri).Assembly.Location,
+                typeof(Enumerable).Assembly.Location,
+            };
+#endif
+
+            var assembliesToReference = frameworkAssemblies.Concat(new[]
+            {
+                typeof(Azure.Core.Request).Assembly.Location,
+                typeof(JObject).Assembly.Location,
+                LoadAssemblySafely("Microsoft.Bcl.AsyncInterfaces.dll").Location,
+                typeof(SwaggerDataContextDriver).Assembly.Location,
+            });
+
             var compilation = CSharpCompilation.Create(
                 name.Name,
                 code.Select(
-                    f => CSharpSyntaxTree.ParseText(f.Contents, new CSharpParseOptions(LanguageVersion.Latest), f.Path)),
-                references.Select(path => MetadataReference.CreateFromFile(path)),
+                    f => CSharpSyntaxTree.ParseText(f.Contents, new CSharpParseOptions(LanguageVersion.CSharp8), f.Path)),
+                assembliesToReference.Select(path => MetadataReference.CreateFromFile(path)),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             using (var fileStream = new FileStream(name.CodeBase, FileMode.Create))
             {
@@ -254,19 +277,23 @@ namespace {nameSpace}
 
         private static async Task<ServiceClientModel> GetModelAsync(string uri, GeneratorOptions options)
         {
-            SwaggerDocument document;
-            using (var client = new HttpClient())
-            {
-                using (var docStream = await client.GetStreamAsync(uri))
-                using (var reader = new StreamReader(docStream))
-                using (var jsonReader = new JsonTextReader(reader))
-                {
-                    document = SwaggerSerializer.Deserialize(jsonReader);
-                }
-            }
+            var (diag, doc) = await GetSwaggerDocument(uri);
 
             var generator = new ServiceClientModelFactory(options);
-            return generator.Create(document);
+            return generator.Create(doc);
+        }
+
+        private static async Task<(OpenApiDiagnostic, OpenApiDocument)> GetSwaggerDocument(string input)
+        {
+            using (var client = new HttpClient(new HttpClientHandler { CheckCertificateRevocationList = true }))
+            {
+                using (Stream docStream = await client.GetStreamAsync(input))
+                {
+                    var doc = ServiceClientModelFactory.ReadDocument(docStream, out OpenApiDiagnostic diagnostic);
+
+                    return (diagnostic, doc);
+                }
+            }
         }
     }
 }

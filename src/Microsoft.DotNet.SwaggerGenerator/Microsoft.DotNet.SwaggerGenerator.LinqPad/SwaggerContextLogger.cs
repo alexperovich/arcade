@@ -3,6 +3,8 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Azure;
+using Azure.Core;
 
 namespace Microsoft.DotNet.SwaggerGenerator.LinqPad
 {
@@ -15,46 +17,40 @@ namespace Microsoft.DotNet.SwaggerGenerator.LinqPad
             _output = output;
         }
 
-        private async Task Display(IEnumerable<KeyValuePair<string, IEnumerable<string>>> headers, HttpContent content)
+        private async Task Display(IEnumerable<HttpHeader> headers)
         {
-            if (content != null)
+            foreach (var header in headers)
             {
-                headers = headers.Concat(content.Headers);
-            }
-
-            foreach (var (name, values) in headers)
-            {
+                var name = header.Name;
+                var value = header.Value;
                 if (name == "Authorization")
                 {
                     await _output.WriteLineAsync($"{name}: *********");
                     continue;
                 }
-                foreach (var value in values)
-                {
-                    await _output.WriteLineAsync($"{name}: {value}");
-                }
+                await _output.WriteLineAsync($"{name}: {value}");
             }
 
             return;
         }
 
-        public async Task RequestStarting(HttpRequestMessage request)
+        public async Task RequestStarting(Request request)
         {
 
             if (_output != null)
             {
-                await _output.WriteLineAsync($"{request.Method} {request.RequestUri}");
-                await Display(request.Headers, request.Content);
+                await _output.WriteLineAsync($"{request.Method} {request.Uri}");
+                await Display(request.Headers);
                 await _output.WriteLineAsync();
             }
         }
 
-        public async Task RequestFinished(HttpRequestMessage request, HttpResponseMessage response)
+        public async Task RequestFinished(Request request, Response response)
         {
             if (_output != null)
             {
-                await _output.WriteLineAsync($"HTTP/{response.Version} {(int)response.StatusCode} {response.ReasonPhrase}");
-                await Display(response.Headers, response.Content);
+                await _output.WriteLineAsync($"{(int)response.Status} {response.ReasonPhrase}");
+                await Display(response.Headers);
                 await _output.WriteLineAsync();
             }
         }
