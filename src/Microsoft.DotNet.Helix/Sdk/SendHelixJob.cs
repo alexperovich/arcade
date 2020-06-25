@@ -3,17 +3,12 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Build.Framework;
 using Microsoft.DotNet.Helix.Client;
-using Microsoft.WindowsAzure.Storage;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Microsoft.DotNet.Helix.Sdk
 {
@@ -205,6 +200,13 @@ namespace Microsoft.DotNet.Helix.Sdk
                         def = AddProperty(def, helixProperty);
                     }
                 }
+                
+                def = AddBuildVariableProperty(def, "Project", "System.TeamProject");
+                def = AddBuildVariableProperty(def, "BuildNumber", "Build.BuildNumber");
+                def = AddBuildVariableProperty(def, "BuildId", "Build.BuildId");
+                def = AddBuildVariableProperty(def, "DefinitionName", "Build.DefinitionName");
+                def = AddBuildVariableProperty(def, "DefinitionId", "System.DefinitionId");
+                def = AddBuildVariableProperty(def, "Reason", "Build.Reason");
 
                 // don't send the job if we have errors
                 if (Log.HasLoggedErrors)
@@ -223,6 +225,26 @@ namespace Microsoft.DotNet.Helix.Sdk
             }
 
             cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        private IJobDefinition AddBuildVariableProperty(IJobDefinition def, string key, string azdoVariableName)
+        {
+            string envName = FromAzdoVariableNameToEnvironmentVariableName(azdoVariableName);
+
+            var value = Environment.GetEnvironmentVariable(envName);
+            if (string.IsNullOrEmpty(value))
+            {
+                return def;
+            }
+
+            def.WithProperty(key, value);
+            Log.LogMessage($"Added build variable property '{key}' (value: '{value}') to job definition.");
+            return def;
+        }
+
+        private static string FromAzdoVariableNameToEnvironmentVariableName(string name)
+        {
+            return name.Replace('.', '_').ToUpper();
         }
 
         private IJobDefinition AddProperty(IJobDefinition def, ITaskItem property)
@@ -248,6 +270,20 @@ namespace Microsoft.DotNet.Helix.Sdk
             {
                 return def;
             }
+
+            if(name.Contains('%'))
+            {
+                Log.LogWarning($"Work Item named '{name}' contains encoded characters which is not recommended.");
+            }
+
+            var cleanedName = Helpers.CleanWorkItemName(name);
+
+            if (name != cleanedName)
+            {
+                Log.LogWarning($"Work Item named '{name}' contains unsupported characters and has been renamed to '{cleanedName}'.");
+            }
+
+            name = cleanedName;
 
             if (!workItem.GetRequiredMetadata(Log, "Command", out string command))
             {
