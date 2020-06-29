@@ -267,9 +267,14 @@ namespace {nameSpace}
                 return true;
             }
 
-            if (diagnostic.Severity == DiagnosticSeverity.Warning && diagnostic.Id == "CS1701")
+            if (diagnostic.Severity == DiagnosticSeverity.Warning)
             {
-                return true;
+                return diagnostic.Id switch
+                {
+                    "CS1701" => true,
+                    "CS1702" => true,
+                    _ => false,
+                };
             }
 
             return false;
